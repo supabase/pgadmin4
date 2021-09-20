@@ -56,7 +56,6 @@ class DomainModule(SchemaChildModule):
         super(DomainModule, self).__init__(*args, **kwargs)
         self.min_ver = None
         self.max_ver = None
-        self.min_gpdbver = 1000000000
 
     def get_nodes(self, gid, sid, did, scid):
         """
@@ -590,7 +589,7 @@ AND relkind != 'c'))"""
         if not status:
             return internal_server_error(errormsg=res)
 
-        # We need oid to to add object in tree at browser, below sql will
+        # We need oid to add object in tree at browser, below sql will
         # gives the same
         SQL = render_template("/".join([self.template_path,
                                         self._OID_SQL]),
@@ -981,6 +980,37 @@ AND relkind != 'c'))"""
                 sql = self.sql(gid=gid, sid=sid, did=did, scid=scid, doid=oid,
                                json_resp=False)
         return sql
+
+    def get_dependencies(self, conn, object_id, where=None,
+                         show_system_objects=None, is_schema_diff=False):
+        """
+        This function is used to get dependencies of domain and it's
+        domain constraints.
+        """
+        domain_dependencies = []
+        domain_deps = super().get_dependencies(
+            conn, object_id, where=None, show_system_objects=None,
+            is_schema_diff=True)
+        if len(domain_deps) > 0:
+            domain_dependencies.extend(domain_deps)
+
+        # Get Domain Constraints
+        SQL = render_template("/".join([self.template_path,
+                                        self._GET_CONSTRAINTS_SQL]),
+                              doid=object_id)
+        status, res = self.conn.execute_dict(SQL)
+        if not status:
+            return False, internal_server_error(errormsg=res)
+
+        # Get the domain constraints dependencies.
+        for row in res['rows']:
+            constraint_deps = super().get_dependencies(
+                conn, row['conoid'], where=None, show_system_objects=None,
+                is_schema_diff=True)
+            if len(constraint_deps) > 0:
+                domain_dependencies.extend(constraint_deps)
+
+        return domain_dependencies
 
 
 SchemaDiffRegistry(blueprint.node_type, DomainView)

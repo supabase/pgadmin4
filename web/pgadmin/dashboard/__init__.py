@@ -8,6 +8,7 @@
 ##########################################################################
 
 """A blueprint module implementing the dashboard frame."""
+import math
 from functools import wraps
 from flask import render_template, url_for, Response, g, request
 from flask_babelex import gettext
@@ -150,6 +151,15 @@ class DashboardModule(PgAdminModule):
                              'details')
         )
 
+        self.long_running_query_threshold = self.dashboard_preference.register(
+            'display', 'long_running_query_threshold',
+            gettext('Long running query thresholds'), 'threshold',
+            '2|5', category_label=PREF_LABEL_DISPLAY,
+            help_str=gettext('Set the warning and alert threshold value to '
+                             'highlight the long-running queries on the '
+                             'dashboard.')
+        )
+
     def get_exposed_url_endpoints(self):
         """
         Returns:
@@ -228,10 +238,9 @@ def check_precondition(f):
         g.server_type = g.manager.server_type
         g.version = g.manager.version
 
-        # Include server_type in template_path when server_type is gpdb
+        # Include server_type in template_path
         g.template_path = 'dashboard/sql/' + (
-            '#{0}#{1}#'.format(g.server_type, g.version)
-            if g.server_type == 'gpdb' else '#{0}#'.format(g.version)
+            '#{0}#'.format(g.version)
         )
 
         return f(*args, **kwargs)
@@ -300,13 +309,14 @@ def index(sid=None, did=None):
         )
 
 
-def get_data(sid, did, template):
+def get_data(sid, did, template, check_long_running_query=False):
     """
     Generic function to get server stats based on an SQL template
     Args:
         sid: The server ID
         did: The database ID
         template: The SQL template name
+        check_long_running_query:
 
     Returns:
 
@@ -324,10 +334,45 @@ def get_data(sid, did, template):
     if not status:
         return internal_server_error(errormsg=res)
 
+    # Check the long running query status and set the row type.
+    if check_long_running_query:
+        get_long_running_query_status(res['rows'])
+
     return ajax_response(
         response=res['rows'],
         status=200
     )
+
+
+def get_long_running_query_status(activities):
+    """
+    This function is used to check the long running query and set the
+    row type to highlight the row color accordingly
+    """
+    dash_preference = Preferences.module('dashboards')
+    long_running_query_threshold = \
+        dash_preference.preference('long_running_query_threshold').get()
+
+    if long_running_query_threshold is not None:
+        long_running_query_threshold = long_running_query_threshold.split('|')
+
+        warning_value = float(long_running_query_threshold[0]) \
+            if long_running_query_threshold[0] != '' else math.inf
+        alert_value = float(long_running_query_threshold[1]) \
+            if long_running_query_threshold[1] != '' else math.inf
+
+        for row in activities:
+            row['row_type'] = None
+
+            # We care for only those queries which are in active state and
+            # have active_since parameter and not None
+            if row['state'] == 'active' and 'active_since' in row and \
+                    row['active_since'] is not None:
+                active_since = float(row['active_since'])
+                if active_since > warning_value:
+                    row['row_type'] = 'warning'
+                if active_since > alert_value:
+                    row['row_type'] = 'alert'
 
 
 @blueprint.route('/dashboard_stats',
@@ -376,7 +421,7 @@ def activity(sid=None, did=None):
     :param sid: server id
     :return:
     """
-    return get_data(sid, did, 'activity.sql')
+    return get_data(sid, did, 'activity.sql', True)
 
 
 @blueprint.route('/locks/', endpoint='locks')

@@ -9,6 +9,7 @@
 
 import os
 import sys
+import subprocess
 from collections import defaultdict
 from operator import attrgetter
 
@@ -19,6 +20,8 @@ from threading import Lock
 
 from .paths import get_storage_directory
 from .preferences import Preferences
+from pgadmin.model import Server
+from pgadmin.utils.constants import UTILITIES_ARRAY
 
 
 class PgAdminModule(Blueprint):
@@ -238,7 +241,7 @@ else:
         return os.path.realpath(os.path.expanduser('~/'))
 
 
-def get_complete_file_path(file):
+def get_complete_file_path(file, validate=True):
     """
     Args:
         file: File returned by file manager
@@ -263,7 +266,10 @@ def get_complete_file_path(file):
             file = file.replace('\\', '/')
             file = fs_short_path(file)
 
-    return file if os.path.isfile(file) else None
+    if validate:
+        return file if os.path.isfile(file) else None
+    else:
+        return file
 
 
 def does_utility_exist(file):
@@ -272,10 +278,96 @@ def does_utility_exist(file):
     :return:
     """
     error_msg = None
+    if file is None:
+        error_msg = gettext("Utility file not found. Please correct the Binary"
+                            " Path in the Preferences dialog")
+        return error_msg
+
     if not os.path.exists(file):
         error_msg = gettext("'%s' file not found. Please correct the Binary"
                             " Path in the Preferences dialog" % file)
     return error_msg
+
+
+def get_server(sid):
+    """
+    # Fetch the server  etc
+    :param sid:
+    :return: server
+    """
+    server = Server.query.filter_by(id=sid).first()
+    return server
+
+
+def set_binary_path(binary_path, bin_paths, server_type,
+                    version_number=None, set_as_default=False):
+    """
+    This function is used to iterate through the utilities and set the
+    default binary path.
+    """
+    path_with_dir = binary_path if "$DIR" in binary_path else None
+
+    # Check if "$DIR" present in binary path
+    binary_path = replace_binary_path(binary_path)
+
+    for utility in UTILITIES_ARRAY:
+        full_path = os.path.abspath(
+            os.path.join(binary_path, (utility if os.name != 'nt' else
+                                       (utility + '.exe'))))
+
+        try:
+            # if version_number is provided then no need to fetch it.
+            if version_number is None:
+                # Get the output of the '--version' command
+                version_string = \
+                    subprocess.getoutput('"{0}" --version'.format(full_path))
+
+                # Get the version number by splitting the result string
+                version_number = \
+                    version_string.split(") ", 1)[1].split('.', 1)[0]
+            elif version_number.find('.'):
+                version_number = version_number.split('.', 1)[0]
+
+            # Get the paths array based on server type
+            if 'pg_bin_paths' in bin_paths or 'as_bin_paths' in bin_paths:
+                paths_array = bin_paths['pg_bin_paths']
+                if server_type == 'ppas':
+                    paths_array = bin_paths['as_bin_paths']
+            else:
+                paths_array = bin_paths
+
+            for path in paths_array:
+                if path['version'].find(version_number) == 0 and \
+                        path['binaryPath'] is None:
+                    path['binaryPath'] = path_with_dir \
+                        if path_with_dir is not None else binary_path
+                    if set_as_default:
+                        path['isDefault'] = True
+                    break
+            break
+        except Exception:
+            continue
+
+
+def replace_binary_path(binary_path):
+    """
+    This function is used to check if $DIR is present in
+    the binary path. If it is there then replace it with
+    module.
+    """
+    if "$DIR" in binary_path:
+        # When running as an WSGI application, we will not find the
+        # '__file__' attribute for the '__main__' module.
+        main_module_file = getattr(
+            sys.modules['__main__'], '__file__', None
+        )
+
+        if main_module_file is not None:
+            binary_path = binary_path.replace(
+                "$DIR", os.path.dirname(main_module_file)
+            )
+
+    return binary_path
 
 
 # Shortcut configuration for Accesskey

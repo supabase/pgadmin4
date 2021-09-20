@@ -8,14 +8,16 @@
 ##########################################################################
 
 import os
-import sys
+import json
+import config
+import copy
 
 from flask import render_template
 from flask_babelex import gettext as _
 from pgadmin.utils.preferences import Preferences
 from werkzeug.exceptions import InternalServerError
-
-import config
+from pgadmin.utils.constants import BINARY_PATHS
+from pgadmin.utils import set_binary_path, replace_binary_path
 
 
 class ServerType(object):
@@ -58,17 +60,62 @@ class ServerType(object):
     @classmethod
     def register_preferences(cls):
         paths = Preferences('paths', _('Paths'))
+        bin_paths = copy.deepcopy(BINARY_PATHS)
 
         for key in cls.registry:
             st = cls.registry[key]
-            default_path = config.DEFAULT_BINARY_PATHS.get(st.stype, "")
 
-            st.utility_path = paths.register(
-                'bin_paths', st.stype + '_bin_dir',
-                st.UTILITY_PATH_LABEL,
-                'text', default_path, category_label=_('Binary paths'),
-                help_str=st.UTILITY_PATH_HELP
-            )
+            if key not in ['pg', 'ppas']:
+                continue
+
+            if key == 'pg':
+                # Set the DEFAULT_BINARY_PATHS if any
+                ServerType.set_default_binary_path(
+                    bin_paths['pg_bin_paths'], key)
+
+                st.utility_path = paths.register(
+                    'bin_paths', 'pg_bin_dir',
+                    _("PostgreSQL Binary Path"), 'selectFile',
+                    json.dumps(bin_paths['pg_bin_paths']),
+                    category_label=_('Binary paths')
+                )
+            elif key == 'ppas':
+                # Set the DEFAULT_BINARY_PATHS if any
+                ServerType.set_default_binary_path(
+                    bin_paths['as_bin_paths'], key)
+
+                st.utility_path = paths.register(
+                    'bin_paths', 'ppas_bin_dir',
+                    _("EDB Advanced Server Binary Path"), 'selectFile',
+                    json.dumps(bin_paths['as_bin_paths']),
+                    category_label=_('Binary paths')
+                )
+
+            def path_converter(old_path):
+                """
+                This function is used to convert old path to the
+                new paths which are in JSON format.
+                """
+                bin_paths_server_based = \
+                    copy.deepcopy(BINARY_PATHS['pg_bin_paths'])
+                if key == 'ppas':
+                    bin_paths_server_based = \
+                        copy.deepcopy(BINARY_PATHS['as_bin_paths'])
+
+                if not ServerType.is_binary_path_of_type_json(old_path):
+                    set_binary_path(old_path, bin_paths_server_based,
+                                    key, set_as_default=True)
+                else:
+                    bin_paths_server_based = json.loads(old_path)
+
+                # Set the DEFAULT_BINARY_PATHS if any
+                ServerType.set_default_binary_path(bin_paths_server_based, key)
+
+                return json.dumps(bin_paths_server_based)
+
+            # Run the migrate user preferences.
+            paths.migrate_user_preferences(st.utility_path.pid,
+                                           path_converter)
 
     @property
     def priority(self):
@@ -120,23 +167,80 @@ class ServerType(object):
                     operation
                 )
             )
-        bin_path = self.utility_path.get()
-        if "$DIR" in bin_path:
-            # When running as an WSGI application, we will not find the
-            # '__file__' attribute for the '__main__' module.
-            main_module_file = getattr(
-                sys.modules['__main__'], '__file__', None
-            )
 
-            if main_module_file is not None:
-                bin_path = bin_path.replace(
-                    "$DIR", os.path.dirname(main_module_file)
-                )
+        bin_path = self.get_utility_path(sversion)
+        if bin_path is None:
+            return None
+
+        # Check if "$DIR" present in binary path
+        bin_path = replace_binary_path(bin_path)
 
         return os.path.abspath(os.path.join(
             bin_path,
             (res if os.name != 'nt' else (res + '.exe'))
         ))
+
+    def get_utility_path(self, sverison):
+        """
+        This function is used to get the utility path set by the user in
+        preferences for the specific server version, if not set then check
+        for any default path is set.
+        """
+        default_path = None
+        bin_path_json = json.loads(self.utility_path.get())
+        # iterate through all the path and return appropriate value
+        for bin_path in bin_path_json:
+            if int(bin_path['version']) <= sverison < \
+                int(bin_path['next_major_version']) and \
+                    bin_path['binaryPath'] is not None and \
+                    bin_path['binaryPath'].strip() != '':
+                return bin_path['binaryPath']
+
+            if bin_path['isDefault']:
+                default_path = bin_path['binaryPath']
+
+        return default_path
+
+    @staticmethod
+    def is_default_binary_path_set(binary_paths):
+        """
+        This function is used to iterate through the binary paths
+        and check whether isDefault is set to true.
+        """
+        for path in binary_paths:
+            if path['isDefault']:
+                return True
+        return False
+
+    @staticmethod
+    def is_binary_path_of_type_json(binary_path):
+        """
+        This function will check if the binary path is of type json or not.
+        """
+        try:
+            json.loads(binary_path)
+        except ValueError:
+            return False
+        return True
+
+    @staticmethod
+    def set_default_binary_path(bin_paths, server_type):
+        """
+        This function is used to check whether default binary path is set
+        or not and then iterate through config.DEFAULT_BINARY_PATHS and
+        set the path based on version number.
+        """
+        is_default_path_set = ServerType.is_default_binary_path_set(bin_paths)
+        for path in config.DEFAULT_BINARY_PATHS:
+            path_value = config.DEFAULT_BINARY_PATHS[path]
+            if path_value is not None and path_value != "" and \
+                    path.find(server_type) == 0 and len(path.split('-')) > 1:
+                set_binary_path(path_value, bin_paths, server_type,
+                                path.split('-')[1])
+            elif path_value is not None and path_value != "" and \
+                    path.find(server_type) == 0:
+                set_binary_path(path_value, bin_paths, server_type,
+                                set_as_default=not is_default_path_set)
 
 
 # Default Server Type

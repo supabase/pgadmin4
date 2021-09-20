@@ -154,6 +154,9 @@ the graphs on the *Dashboard* tab:
     :alt: Preferences dialog dashboard display options
     :align: center
 
+* Set the warning and alert threshold value to highlight the long-running
+  queries on the dashboard.
+
 * When the *Show activity?* switch is set to *True*, activity tables will be
   displayed on dashboards.
 
@@ -211,21 +214,23 @@ files.
     :align: center
 
 Use the fields on the *Binary paths* panel to specify the path to the directory
-that contains the utility programs (pg_dump, pg_restore, and pg_dumpall) for
+that contains the utility programs (pg_dump, pg_dumpall, pg_restore and psql) for
 monitored databases:
 
-* Use the *EDB Advanced Server Binary Path* field to specify the location of the
-  EDB Postgres Advanced Server utility programs.  If this path is not set,
-  pgAdmin will attempt to find the utilities in standard locations used by
-  EnterpriseDB.
+* Use the *EDB Advanced Server Binary Path* grid to specify the location of the
+  EDB Postgres Advanced Server utility programs based on the server version.
+  If the respective path is not set, then pgAdmin will pick up the path for which
+  'Set as default' is checked else pgAdmin will attempt to find the utilities in
+  standard locations used by EnterpriseDB.
 
-* Use the *Greenplum Database Binary Path* field to specify the location of the
-  Greenplum database utility programs.  If this path is not set, pgAdmin will
-  attempt to find the utilities in standard locations used by Greenplum.
+* Use the *PostgreSQL Binary Path* grid to specify the location of the
+  PostgreSQL utility programs based on the server version. If the respective
+  path is not set, then pgAdmin will pick up the path for which 'Set as default'
+  is checked else pgAdmin will attempt to find the utilities in standard
+  locations used by PostgreSQL.
 
-* Use the *PostgreSQL Binary Path* field to specify the location of the
-   PostgreSQL utility programs.  If this path is not set, pgAdmin will attempt
-   to find the utilities in standard locations used by PostgreSQL.
+**Note:** Use the 'Validate path' button to check the existence of the utility
+programs (pg_dump, pg_dumpall, pg_restore and psql) and there respective versions.
 
 .. image:: images/preferences_paths_help.png
     :alt: Preferences dialog binary path help section
@@ -342,11 +347,15 @@ a graphical EXPLAIN.
 
 Use the fields on the *Options* panel to manage editor preferences.
 
-* When the *Auto-Commit?* switch is set to *True*, each successful query is
+* When the *Auto commit?* switch is set to *True*, each successful query is
   committed after execution.
 
-* When the *Auto-Rollback?* switch is set to *True*, failed queries are rolled
+* When the *Auto rollback on error?* switch is set to *True*, failed queries are rolled
   back.
+
+* When the *Copy SQL from main window to query tool?* switch is set to *True*,
+  the CREATE sql of the selected object will be copied to query tool when query tool
+  will open.
 
 * When the *Prompt to save unsaved data changes?* switch is set to *True*, the
   editor will prompt the user to saved unsaved data when exiting the data
@@ -372,6 +381,13 @@ Use the fields on the *Options* panel to manage editor preferences.
 Use the fields on the *Results grid* panel to specify your formatting
 preferences for copied data.
 
+* When the *Columns sized by* is set to *Column data*, then data columns will
+  auto-size to the maximum width of the data in the column as loaded in the
+  first batch. If set to *Column name*, the column will be sized to the widest
+  of the data type or column name.
+* Specify the maximum width of the column in pixels when 'Columns sized by' is
+  set to *Column data*. If 'Columns sized by' is set to *Column name* then this
+  setting won't have any effect.
 * Use the *Result copy field separator* drop-down listbox to select the field
   separator for copied data.
 * Use the *Result copy quote character* drop-down listbox to select the quote

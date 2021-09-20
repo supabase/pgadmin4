@@ -2,14 +2,21 @@
 {% import 'macros/schemas/privilege.macros' as PRIVILEGE %}
 {% if data %}
 {% if data.name != o_data.name %}
-ALTER SEQUENCE {{ conn|qtIdent(o_data.schema, o_data.name) }}
+ALTER SEQUENCE IF EXISTS {{ conn|qtIdent(o_data.schema, o_data.name) }}
     RENAME TO {{ conn|qtIdent(data.name) }};
 
 {% endif %}
 {% if data.seqowner and data.seqowner != o_data.seqowner %}
-ALTER SEQUENCE {{ conn|qtIdent(o_data.schema, data.name) }}
+ALTER SEQUENCE IF EXISTS {{ conn|qtIdent(o_data.schema, data.name) }}
     OWNER TO {{ conn|qtIdent(data.seqowner) }};
 
+{% endif %}
+{% if (data.owned_table == None or data.owned_table is not defined) and (o_data.owned_table is defined and o_data.owned_table != None) and (data.owned_column == None or data.owned_column is not defined) %}
+ALTER SEQUENCE IF EXISTS {{ conn|qtIdent(o_data.schema, data.name) }}
+    OWNED BY NONE;
+{% elif (data.owned_table is defined or data.owned_column is defined) and (data.owned_table != o_data.owned_table or data.owned_column != o_data.owned_column) %}
+ALTER SEQUENCE IF EXISTS {{ conn|qtIdent(o_data.schema, data.name) }}
+    OWNED BY {% if data.owned_table is defined %}{{ conn|qtIdent(data.owned_table) }}{% else %}{{ conn|qtIdent(o_data.owned_table) }}{% endif %}.{% if data.owned_column is defined %}{{ conn|qtIdent(data.owned_column) }}{% else %}{{ conn|qtIdent(o_data.owned_column) }}{% endif %};
 {% endif %}
 {% if data.current_value is defined %}
 {% set seqname = conn|qtIdent(o_data.schema, data.name) %}
@@ -38,11 +45,11 @@ SELECT setval({{ seqname|qtLiteral }}, {{ data.current_value }}, true);
 {% set defquery = defquery+'\n    NO CYCLE' %}
 {% endif %}
 {% if defquery and defquery != '' %}
-ALTER SEQUENCE {{ conn|qtIdent(o_data.schema, data.name) }}{{ defquery }};
+ALTER SEQUENCE IF EXISTS {{ conn|qtIdent(o_data.schema, data.name) }}{{ defquery }};
 
 {% endif %}
 {% if data.schema and data.schema != o_data.schema %}
-ALTER SEQUENCE {{ conn|qtIdent(o_data.schema, data.name) }}
+ALTER SEQUENCE IF EXISTS {{ conn|qtIdent(o_data.schema, data.name) }}
     SET SCHEMA {{ conn|qtIdent(data.schema) }};
 
 {% set seqname = conn|qtIdent(data.schema, data.name) %}

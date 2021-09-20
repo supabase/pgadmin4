@@ -1,8 +1,8 @@
 -- Table: public.test_table_$%{}[]()&*^!@""'`\/#
 
--- DROP TABLE public."test_table_$%{}[]()&*^!@""""'`\/#";
+-- DROP TABLE IF EXISTS public."test_table_$%{}[]()&*^!@""""'`\/#";
 
-CREATE TABLE public."test_table_$%{}[]()&*^!@""""'`\/#"
+CREATE TABLE IF NOT EXISTS public."test_table_$%{}[]()&*^!@""""'`\/#"
 (
     m_col bigint
 ) PARTITION BY RANGE (m_col)
@@ -11,7 +11,7 @@ WITH (
 )
 TABLESPACE pg_default;
 
-ALTER TABLE public."test_table_$%{}[]()&*^!@""""'`\/#"
+ALTER TABLE IF EXISTS public."test_table_$%{}[]()&*^!@""""'`\/#"
     OWNER to postgres;
 
 COMMENT ON TABLE public."test_table_$%{}[]()&*^!@""""'`\/#"
@@ -19,8 +19,8 @@ COMMENT ON TABLE public."test_table_$%{}[]()&*^!@""""'`\/#"
 
 -- Partitions SQL
 
-CREATE TABLE public."test_part_$%{}[]()&*^!@""""""""'`\/#" PARTITION OF public."test_table_$%{}[]()&*^!@""""'`\/#"
+CREATE TABLE IF NOT EXISTS public."test_part_$%{}[]()&*^!@""""""""'`\/#" PARTITION OF public."test_table_$%{}[]()&*^!@""""'`\/#"
     FOR VALUES FROM ('0') TO ('1000');
 
-ALTER TABLE public."test_part_$%{}[]()&*^!@""""""""'`\/#"
+ALTER TABLE IF EXISTS public."test_part_$%{}[]()&*^!@""""""""'`\/#"
     OWNER to postgres;

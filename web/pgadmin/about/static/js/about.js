@@ -9,9 +9,9 @@
 
 define(
   ['jquery', 'alertify', 'sources/pgadmin', 'sources/gettext',
-    'sources/url_for','sources/utils',
+    'sources/url_for','sources/utils','pgadmin.user_management.current_user',
   ],
-  function($, alertify, pgAdmin, gettext, url_for, commonUtils) {
+  function($, alertify, pgAdmin, gettext, url_for, commonUtils, current_user) {
     pgAdmin = pgAdmin || window.pgAdmin || {};
 
     /* Return back, this has been called more than once */
@@ -45,14 +45,28 @@ define(
               },
               hooks:{
                 onshow:function(){
+                  var self = this;
                   var container = $(this.elements.footer).find('button:not([disabled])');
                   commonUtils.findAndSetFocus(container);
+                  $('#copy_textarea').on('click', function(){
+                    //Copy the server configuration details
+                    let textarea = document.getElementById('about-textarea');
+                    textarea.select();
+                    document.execCommand('copy');
+                    $('#copy_textarea').text('Copied');
+                  });
+
+                  $(this.elements.resizeHandle).on('click', function(){
+                    // Set the height of the Textarea
+                    var height = self.elements.dialog.scrollHeight - 300;
+                    if (height < 0)
+                      height = self.elements.dialog.scrollHeight - 150;
+                    $('#about-textarea').css({'height':height});
+                  });
                 },
               },
-
               prepare:function() {
                 this.setContent(this.message);
-
               },
             };
           });
@@ -60,9 +74,15 @@ define(
 
         $.get(url_for('about.index'),
           function(data) {
-            alertify.aboutDialog(
-              gettext('About %s', pgAdmin.Browser.utils.app_name), data
-            ).resizeTo(pgAdmin.Browser.stdW.md, pgAdmin.Browser.stdH.md);
+            if(!current_user.is_admin && pgAdmin.server_mode){
+              alertify.aboutDialog(
+                gettext('About %s', pgAdmin.Browser.utils.app_name), data
+              ).resizeTo(pgAdmin.Browser.stdW.md, 300);
+            }else{
+              alertify.aboutDialog(
+                gettext('About %s', pgAdmin.Browser.utils.app_name), data
+              ).resizeTo(750, 470);
+            }
           });
       },
     };

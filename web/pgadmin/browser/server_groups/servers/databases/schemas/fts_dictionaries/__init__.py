@@ -57,7 +57,6 @@ class FtsDictionaryModule(SchemaChildModule):
         self.max_ver = None
         self.manager = None
         super(FtsDictionaryModule, self).__init__(*args, **kwargs)
-        self.min_gpdbver = 1000000000
 
     def get_nodes(self, gid, sid, did, scid):
         """
@@ -781,9 +780,7 @@ class FtsDictionaryView(PGChildNodeView, SchemaDiffObjectCompare):
         if not status:
             return internal_server_error(errormsg=rset)
 
-        # Empty set is added before actual list as initially it will be visible
-        # at template control while creating a new FTS Dictionary
-        res = [{'label': '', 'value': ''}]
+        res = []
         for row in rset['rows']:
             if row['nspname'] != "pg_catalog":
                 row['tmplname'] = self.qtIdent(

@@ -9,6 +9,10 @@
 
 import {getTreeNodeHierarchyFromIdentifier} from '../../../../static/js/tree/pgadmin_tree_node';
 import gettext from 'sources/gettext';
+import Alertify from 'pgadmin.alertifyjs';
+import pgWindow from 'sources/window';
+
+const pgAdmin = pgWindow.pgAdmin;
 
 export function getDatabaseLabel(parentData) {
   return parentData.database ? parentData.database.label
@@ -19,7 +23,7 @@ function isServerInformationAvailable(parentData) {
   return parentData.server === undefined;
 }
 
-export function getPanelTitle(pgBrowser, selected_item=null, custom_title=null, parentData=null) {
+export function getPanelTitle(pgBrowser, selected_item=null, custom_title=null, parentData=null, conn_title=false, db_label=null) {
   var preferences = pgBrowser.get_preferences_for_module('browser');
   if(selected_item == null && parentData == null) {
     selected_item = pgBrowser.treeMenu.selected();
@@ -32,12 +36,19 @@ export function getPanelTitle(pgBrowser, selected_item=null, custom_title=null, 
     }
   }
 
-  const db_label = getDatabaseLabel(parentData);
+  if(!db_label) {
+    db_label = getDatabaseLabel(parentData);
+  }
+
   var qt_title_placeholder = '';
-  if (custom_title) {
-    qt_title_placeholder = custom_title;
+  if (!conn_title) {
+    if (custom_title) {
+      qt_title_placeholder = custom_title;
+    } else {
+      qt_title_placeholder = preferences['qt_tab_title_placeholder'];
+    }
   } else {
-    qt_title_placeholder = preferences['qt_tab_title_placeholder'];
+    qt_title_placeholder = pgAdmin['qt_default_placeholder'];
   }
 
   var title_data = {
@@ -100,7 +111,27 @@ export function generateTitle(title_placeholder, title_data) {
     title_placeholder = title_placeholder.replace(new RegExp('%ARGS%'), _.unescape(title_data.args));
     title_placeholder = title_placeholder.replace(new RegExp('%SCHEMA%'), _.unescape(title_data.schema));
     title_placeholder = title_placeholder.replace(new RegExp('%DATABASE%'), _.unescape(title_data.database));
+  } else if(title_data.type == 'psql_tool') {
+    title_placeholder = title_placeholder.replace(new RegExp('%DATABASE%'), _.unescape(title_data.database));
+    title_placeholder = title_placeholder.replace(new RegExp('%USERNAME%'), _.unescape(title_data.username));
+    title_placeholder = title_placeholder.replace(new RegExp('%SERVER%'), _.unescape(title_data.server));
   }
 
   return _.escape(title_placeholder);
+}
+
+/*
+ * This function is used refresh the db node after showing alert to the user
+ */
+export function refresh_db_node(message, dbNode) {
+  Alertify.alert()
+    .setting({
+      'title': gettext('Database moved/renamed'),
+      'label':gettext('OK'),
+      'message': gettext(message),
+      'onok': function(){
+        //Set the original db name as soon as user clicks ok button
+        pgAdmin.Browser.Nodes.database.callbacks.refresh(undefined, dbNode);
+      },
+    }).show();
 }

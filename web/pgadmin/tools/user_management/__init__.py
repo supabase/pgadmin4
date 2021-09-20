@@ -25,7 +25,7 @@ from pgadmin.utils.ajax import make_response as ajax_response, \
     make_json_response, bad_request, internal_server_error, forbidden
 from pgadmin.utils.csrf import pgCSRFProtect
 from pgadmin.utils.constants import MIMETYPE_APP_JS, INTERNAL,\
-    SUPPORTED_AUTH_SOURCES, KERBEROS
+    SUPPORTED_AUTH_SOURCES, KERBEROS, LDAP
 from pgadmin.utils.validation_utils import validate_email
 from pgadmin.model import db, Role, User, UserPreference, Server, \
     ServerGroup, Process, Setting, roles_users, SharedServer
@@ -129,6 +129,13 @@ def validate_user(data):
     if 'auth_source' in data and data['auth_source'] != "":
         new_data['auth_source'] = data['auth_source']
 
+    if 'locked' in data and type(data['locked']) == bool:
+        new_data['locked'] = data['locked']
+        if data['locked']:
+            new_data['login_attempts'] = config.MAX_LOGIN_ATTEMPTS
+        else:
+            new_data['login_attempts'] = 0
+
     return new_data
 
 
@@ -157,7 +164,6 @@ def script():
 @pgCSRFProtect.exempt
 @login_required
 def current_user_info():
-
     return Response(
         response=render_template(
             "user_management/js/current_user.js",
@@ -176,7 +182,9 @@ def current_user_info():
             allow_save_tunnel_password='true' if
             config.ALLOW_SAVE_TUNNEL_PASSWORD and session[
                 'allow_save_password'] else 'false',
-            auth_sources=config.AUTHENTICATION_SOURCES
+            auth_sources=config.AUTHENTICATION_SOURCES,
+            current_auth_source=session['auth_source_manager'][
+                'current_source'] if config.SERVER_MODE is True else INTERNAL
         ),
         status=200,
         mimetype=MIMETYPE_APP_JS
@@ -206,7 +214,8 @@ def user(uid):
                'email': u.email,
                'active': u.active,
                'role': u.roles[0].id,
-               'auth_source': u.auth_source
+               'auth_source': u.auth_source,
+               'locked': u.locked
                }
     else:
         users = User.query.all()
@@ -218,7 +227,8 @@ def user(uid):
                                'email': u.email,
                                'active': u.active,
                                'role': u.roles[0].id,
-                               'auth_source': u.auth_source
+                               'auth_source': u.auth_source,
+                               'locked': u.locked
                                })
 
         res = users_data
@@ -315,7 +325,8 @@ def create_user(data):
         'username': usr.username,
         'email': usr.email,
         'active': usr.active,
-        'role': usr.roles[0].id
+        'role': usr.roles[0].id,
+        'locked': usr.locked
     }
 
 
@@ -598,7 +609,8 @@ def update(uid):
                'email': usr.email,
                'active': usr.active,
                'role': usr.roles[0].id,
-               'auth_source': usr.auth_source
+               'auth_source': usr.auth_source,
+               'locked': usr.locked
                }
 
         return ajax_response(

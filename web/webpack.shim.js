@@ -143,6 +143,7 @@ var webpackShimConfig = {
     'dropzone': path.join(__dirname, './node_modules/dropzone/dist/dropzone'),
     'bignumber': path.join(__dirname, './node_modules/bignumber.js/bignumber'),
     'json-bignumber': path.join(__dirname, './node_modules/json-bignumber/dist/JSONBigNumber.min'),
+    'jsoneditor': path.join(__dirname, './node_modules/jsoneditor/dist/jsoneditor.min'),
     'snap.svg': path.join(__dirname, './node_modules/snapsvg-cjs/dist/snap.svg-cjs'),
     'color-picker': path.join(__dirname, './node_modules/@simonwep/pickr/dist/pickr.es5.min'),
     'mousetrap': path.join(__dirname, './node_modules/mousetrap'),
@@ -151,13 +152,24 @@ var webpackShimConfig = {
     'dagre':  path.join(__dirname, 'node_modules/dagre'),
     'graphlib': path.join(__dirname, 'node_modules/graphlib'),
     'react': path.join(__dirname, 'node_modules/react'),
+    'react-dom': path.join(__dirname, 'node_modules/react-dom'),
     'stylis': path.join(__dirname, 'node_modules/stylis'),
+    'popper.js': path.join(__dirname, 'node_modules/popper.js'),
 
     // AciTree
     'jquery.acitree': path.join(__dirname, './node_modules/acitree/js/jquery.aciTree.min'),
     'jquery.aciplugin': path.join(__dirname, './node_modules/acitree/js/jquery.aciPlugin.min'),
     'jquery.acisortable': path.join(__dirname, './node_modules/acitree/js/jquery.aciSortable.min'),
     'jquery.acifragment': path.join(__dirname, './node_modules/acitree/js/jquery.aciFragment.min'),
+
+    //xterm
+    'xterm': path.join(__dirname, './node_modules/xterm/lib/xterm.js'),
+    'xterm-addon-fit': path.join(__dirname, './node_modules/xterm-addon-fit/lib/xterm-addon-fit.js'),
+    'xterm-addon-web-links': path.join(__dirname, './node_modules/xterm-addon-web-links/lib/xterm-addon-web-links.js'),
+    'xterm-addon-search': path.join(__dirname, './node_modules/xterm-addon-search/lib/xterm-addon-search.js'),
+
+    //socket
+    'socketio': path.join(__dirname, './node_modules/socket.io-client/dist/socket.io.js'),
 
     // Backbone and Backgrid
     'backbone': path.join(__dirname, './node_modules/backbone/backbone'),
@@ -174,11 +186,13 @@ var webpackShimConfig = {
     'pgadmin.backgrid': path.join(__dirname, './pgadmin/static/js/backgrid.pgadmin'),
 
     'pgadmin.about': path.join(__dirname, './pgadmin/about/static/js/about'),
+    'pgadmin.authenticate.kerberos': path.join(__dirname, './pgadmin/authenticate/static/js/kerberos'),
     'pgadmin.browser': path.join(__dirname, './pgadmin/browser/static/js/browser'),
     'pgadmin.browser.bgprocess': path.join(__dirname, './pgadmin/misc/bgprocess/static/js/bgprocess'),
     'pgadmin.browser.collection': path.join(__dirname, './pgadmin/browser/static/js/collection'),
     'pgadmin.browser.datamodel': path.join(__dirname, './pgadmin/browser/static/js/datamodel'),
     'pgadmin.browser.endpoints': '/browser/js/endpoints',
+    'pgadmin.browser.constants': '/browser/js/constants',
     'pgadmin.browser.error': path.join(__dirname, './pgadmin/browser/static/js/error'),
     'pgadmin.browser.frame': path.join(__dirname, './pgadmin/browser/static/js/frame'),
     'pgadmin.browser.keyboard': path.join(__dirname, './pgadmin/browser/static/js/keyboard'),
@@ -286,6 +300,8 @@ var webpackShimConfig = {
     'pgadmin.tools.storage_manager': path.join(__dirname, './pgadmin/tools/storage_manager/static/js/storage_manager'),
     'pgadmin.tools.erd_module': path.join(__dirname, './pgadmin/tools/erd/static/js/erd_module'),
     'pgadmin.tools.erd': path.join(__dirname, './pgadmin/tools/erd/static/js'),
+    'pgadmin.tools.psql_module': path.join(__dirname, './pgadmin/tools/psql/static/js/psql_module'),
+    'pgadmin.tools.psql': path.join(__dirname, './pgadmin/tools/psql/static/js'),
     'pgadmin.search_objects': path.join(__dirname, './pgadmin/tools/search_objects/static/js'),
     'pgadmin.tools.user_management': path.join(__dirname, './pgadmin/tools/user_management/static/js/user_management'),
     'pgadmin.user_management.current_user': '/user_management/current_user',
@@ -300,6 +316,7 @@ var webpackShimConfig = {
     'pgadmin.browser.messages',
     'pgadmin.browser.utils',
     'pgadmin.server.supported_servers',
+    'pgadmin.browser.constants',
   ],
   // Define list of pgAdmin common libraries to bundle them separately
   // into commons JS from app.bundle.js

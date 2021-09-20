@@ -7,14 +7,20 @@
 //
 //////////////////////////////////////////////////////////////
 
+import MViewSchema from './mview.ui';
+import { getNodeListByName } from '../../../../../../../static/js/node_ajax';
+import { getNodePrivilegeRoleSchema } from '../../../../../static/js/privilege.ui';
+import { getNodeVacuumSettingsSchema } from '../../../../../static/js/vacuum.ui';
+
 define('pgadmin.node.mview', [
   'sources/gettext', 'sources/url_for', 'jquery', 'underscore',
   'sources/pgadmin', 'pgadmin.alertifyjs', 'pgadmin.browser',
   'pgadmin.backform', 'pgadmin.node.schema.dir/child',
-  'pgadmin.node.schema.dir/schema_child_tree_node', 'pgadmin.browser.server.privilege',
+  'pgadmin.node.schema.dir/schema_child_tree_node', 'sources/utils',
+  'pgadmin.browser.server.privilege',
 ], function(
   gettext, url_for, $, _, pgAdmin, Alertify, pgBrowser, Backform,
-  schemaChild, schemaChildTreeNode
+  schemaChild, schemaChildTreeNode, commonUtils
 ) {
 
   /**
@@ -30,7 +36,7 @@ define('pgadmin.node.mview', [
         node: 'mview',
         label: gettext('Materialized Views'),
         type: 'coll-mview',
-        columns: ['name', 'owner'],
+        columns: ['name', 'owner', 'comment'],
         canDrop: schemaChildTreeNode.isTreeItemOfChildOfSchema,
         canDropCascade: schemaChildTreeNode.isTreeItemOfChildOfSchema,
       });
@@ -121,7 +127,24 @@ define('pgadmin.node.mview', [
           icon: 'fa fa-sync-alt',
         }]);
       },
-
+      getSchema: function(treeNodeInfo, itemNodeData) {
+        return new MViewSchema(
+          (privileges)=>getNodePrivilegeRoleSchema('', treeNodeInfo, itemNodeData, privileges),
+          ()=>getNodeVacuumSettingsSchema(this, treeNodeInfo, itemNodeData),
+          {
+            role: ()=>getNodeListByName('role', treeNodeInfo, itemNodeData),
+            schema: ()=>getNodeListByName('schema', treeNodeInfo, itemNodeData, {cacheLevel: 'database'}),
+            spcname: ()=>getNodeListByName('tablespace', treeNodeInfo, itemNodeData, {}, (m)=> {
+              return (m.label != 'pg_global');
+            }),
+            nodeInfo: treeNodeInfo,
+          },
+          {
+            owner: pgBrowser.serverInfo[treeNodeInfo.server._id].user.name,
+            schema: treeNodeInfo.schema.label
+          }
+        );
+      },
       /**
         Define model for the view node and specify the
         properties of the model in schema.
@@ -141,9 +164,6 @@ define('pgadmin.node.mview', [
         },
         defaults: {
           spcname: undefined,
-          toast_autovacuum_enabled: 'x',
-          autovacuum_enabled: 'x',
-          warn_text: undefined,
         },
         schema: [{
           id: 'name', label: gettext('Name'), cell: 'string',
@@ -156,80 +176,8 @@ define('pgadmin.node.mview', [
           control: 'node-list-by-name', select2: { allowClear: false },
           node: 'role', disabled: 'inSchema',
         },{
-          id: 'schema', label: gettext('Schema'), cell: 'string', first_empty: false,
-          control: 'node-list-by-name', type: 'text', cache_level: 'database',
-          node: 'schema', mode: ['create', 'edit'], cache_node: 'database',
-          disabled: 'inSchema', select2: { allowClear: false },
-        },{
-          id: 'system_view', label: gettext('System materialized view?'), cell: 'string',
-          type: 'switch', mode: ['properties'],
-        }, pgBrowser.SecurityGroupSchema, {
-          id: 'acl', label: gettext('Privileges'),
-          mode: ['properties'], type: 'text', group: gettext('Security'),
-        },{
           id: 'comment', label: gettext('Comment'), cell: 'string',
           type: 'multiline',
-        },{
-          id: 'definition', label: gettext('Definition'), cell: 'string',
-          type: 'text', mode: ['create', 'edit'], group: gettext('Definition'),
-          tabPanelCodeClass: 'sql-code-control',
-          control: Backform.SqlCodeControl.extend({
-            onChange: function() {
-              Backform.SqlCodeControl.prototype.onChange.apply(this, arguments);
-              if(this.model && this.model.changed) {
-                if(this.model.origSessAttrs && (this.model.changed.definition != this.model.origSessAttrs.definition)) {
-                  this.model.warn_text = gettext(
-                    'Updating the definition will drop and re-create the materialized view. It may result in loss of information about its dependent objects.'
-                  ) + '<br><br><b>' + gettext('Do you want to continue?') +
-                    '</b>';
-                }
-                else {
-                  this.model.warn_text = undefined;
-                }
-              }
-              else {
-                this.model.warn_text = undefined;
-              }
-            },
-          }),
-        },{
-          id: 'with_data', label: gettext('With data?'),
-          group: gettext('Storage'), mode: ['edit', 'create'],
-          type: 'switch',
-        },{
-          id: 'spcname', label: gettext('Tablespace'), cell: 'string',
-          type: 'text', group: gettext('Storage'), first_empty: false,
-          control: 'node-list-by-name', node: 'tablespace', select2: { allowClear: false },
-          filter: function(m) {
-            return (m.label != 'pg_global');
-          },
-        },{
-          id: 'fillfactor', label: gettext('Fill factor'),
-          group: gettext('Storage'), mode: ['edit', 'create'],
-          type: 'int', min: 10, max: 100,
-        },{
-          id: 'vacuum_settings_str', label: gettext('Storage settings'),
-          type: 'multiline', group: gettext('Storage'), mode: ['properties'],
-        },{
-          type: 'nested', control: 'tab', id: 'materialization',
-          label: gettext('Parameter'), mode: ['edit', 'create'],
-          group: gettext('Parameter'),
-          schema: Backform.VacuumSettingsSchema,
-        },{
-          // Add Privilege Control
-          id: 'datacl', label: gettext('Privileges'), type: 'collection',
-          model: pgBrowser.Node.PrivilegeRoleModel.extend({
-            privileges: ['a', 'r', 'w', 'd', 'D', 'x', 't'],
-          }), uniqueCol : ['grantee'], editable: false,
-          group: 'security', canAdd: true, canDelete: true,
-          mode: ['edit', 'create'], control: 'unique-col-collection',
-        },{
-        // Add Security Labels Control
-          id: 'seclabels', label: gettext('Security labels'),
-          model: pgBrowser.SecLabelModel, editable: false, type: 'collection',
-          canEdit: false, group: 'security', canDelete: true,
-          mode: ['edit', 'create'], canAdd: true,
-          control: 'unique-col-collection', uniqueCol : ['provider'],
         }],
         sessChanged: function() {
           /* If only custom autovacuum option is enabled the check if the options table is also changed. */
@@ -316,25 +264,7 @@ define('pgadmin.node.mview', [
           return;
         }
 
-        var module = 'paths',
-          preference_name = 'pg_bin_dir',
-          msg = gettext('Please configure the PostgreSQL Binary Path in the Preferences dialog.');
-
-        if ((server_data.type && server_data.type == 'ppas') ||
-          server_data.server_type == 'ppas') {
-          preference_name = 'ppas_bin_dir';
-          msg = gettext('Please configure the EDB Advanced Server Binary Path in the Preferences dialog.');
-        }
-
-        var preference = pgBrowser.get_preference(module, preference_name);
-
-        if (preference) {
-          if (!preference.value) {
-            Alertify.alert(gettext('Configuration required'), msg);
-            return;
-          }
-        } else {
-          Alertify.alert(gettext('Failed to load preference %s of module %s', preference_name, module));
+        if (!commonUtils.hasBinariesConfiguration(pgBrowser, server_data, this.alertify)) {
           return;
         }
 

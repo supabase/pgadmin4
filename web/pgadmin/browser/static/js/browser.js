@@ -12,19 +12,22 @@ define('pgadmin.browser', [
   'sources/gettext', 'sources/url_for', 'require', 'jquery', 'underscore',
   'bootstrap', 'sources/pgadmin', 'pgadmin.alertifyjs', 'bundled_codemirror',
   'sources/check_node_visibility', './toolbar', 'pgadmin.help',
-  'sources/csrf', 'sources/utils', 'sources/window', 'pgadmin.browser.utils',
-  'wcdocker', 'jquery.contextmenu', 'jquery.aciplugin', 'jquery.acitree',
+  'sources/csrf', 'sources/utils', 'sources/window', 'pgadmin.authenticate.kerberos',
+  'pgadmin.browser.utils', 'wcdocker', 'jquery.contextmenu', 'jquery.aciplugin',
+  'jquery.acitree',
   'pgadmin.browser.preferences', 'pgadmin.browser.messages',
   'pgadmin.browser.menu', 'pgadmin.browser.panel', 'pgadmin.browser.layout',
   'pgadmin.browser.runtime', 'pgadmin.browser.error', 'pgadmin.browser.frame',
   'pgadmin.browser.node', 'pgadmin.browser.collection', 'pgadmin.browser.activity',
   'sources/codemirror/addon/fold/pgadmin-sqlfoldcode',
-  'pgadmin.browser.keyboard', 'sources/tree/pgadmin_tree_save_state','jquery.acisortable', 'jquery.acifragment',
+  'pgadmin.browser.keyboard', 'sources/tree/pgadmin_tree_save_state','jquery.acisortable',
+  'jquery.acifragment',
 ], function(
   tree,
   gettext, url_for, require, $, _,
   Bootstrap, pgAdmin, Alertify, codemirror,
-  checkNodeVisibility, toolBar, help, csrfToken, pgadminUtils, pgWindow
+  checkNodeVisibility, toolBar, help, csrfToken, pgadminUtils, pgWindow,
+  Kerberos
 ) {
   window.jQuery = window.$ = $;
   // Some scripts do export their object in the window only.
@@ -37,6 +40,8 @@ define('pgadmin.browser', [
   var select_object_msg = gettext('Please select an object in the tree view.');
 
   csrfToken.setPGCSRFToken(pgAdmin.csrf_token_header, pgAdmin.csrf_token);
+
+  Kerberos.validate_kerberos_ticket();
 
   var panelEvents = {};
   panelEvents[wcDocker.EVENT.VISIBILITY_CHANGED] = function() {
@@ -225,6 +230,7 @@ define('pgadmin.browser', [
         isCloseable: false,
         isPrivate: true,
         icon: '',
+        limit: 1,
         content: '<div id="tree" class="aciTree"></div>',
         onCreate: function(panel) {
           toolBar.initializeToolbar(panel, wcDocker);
@@ -239,6 +245,7 @@ define('pgadmin.browser', [
         isCloseable: false,
         isPrivate: true,
         elContainer: true,
+        limit: 1,
         content: '<div class="obj_properties container-fluid"><div role="status" class="pg-panel-message">' + select_object_msg + '</div></div>',
         events: panelEvents,
         onCreate: function(myPanel, $container) {
@@ -253,6 +260,7 @@ define('pgadmin.browser', [
         width: 500,
         isCloseable: true,
         isPrivate: false,
+        limit : 1,
         canHide: true,
         content: '<div class="negative-space p-2"><div role="status" class="pg-panel-message pg-panel-statistics-message">' + select_object_msg + '</div><div class="pg-panel-statistics-container d-none"></div></div>',
         events: panelEvents,
@@ -265,6 +273,7 @@ define('pgadmin.browser', [
         width: 500,
         isCloseable: false,
         isPrivate: true,
+        limit: 1,
         content: '<label for="sql-textarea" class="sr-only">' + gettext('SQL Code') + '</label><div class="sql_textarea"><textarea id="sql-textarea" name="sql-textarea" title="' + gettext('SQL Code') + '"></textarea></div>',
       }),
       // Dependencies of the object
@@ -276,6 +285,7 @@ define('pgadmin.browser', [
         isCloseable: true,
         isPrivate: false,
         canHide: true,
+        limit: 1,
         content: '<div class="negative-space p-2"><div role="status" class="pg-panel-message pg-panel-depends-message">' + select_object_msg + '</div><div class="pg-panel-dependencies-container d-none"></div></div>',
         events: panelEvents,
       }),
@@ -287,6 +297,7 @@ define('pgadmin.browser', [
         width: 500,
         isCloseable: true,
         isPrivate: false,
+        limit: 1,
         canHide: true,
         content: '<div class="negative-space p-2"><div role="status" class="pg-panel-message pg-panel-depends-message">' + select_object_msg + '</div><div class="pg-panel-dependents-container d-none"></div></div>',
         events: panelEvents,
@@ -340,6 +351,7 @@ define('pgadmin.browser', [
             showTitle: panel.showTitle,
             isCloseable: panel.isCloseable,
             isPrivate: panel.isPrivate,
+            limit: (panel.limit) ? panel.limit : null,
             content: (panel.content) ? panel.content : '',
             events: (panel.events) ? panel.events : '',
             canHide: (panel.canHide) ? panel.canHide : '',
@@ -582,7 +594,7 @@ define('pgadmin.browser', [
       }, 300000);
 
       obj.set_master_password('');
-
+      obj.check_corrupted_db_file();
       obj.Events.on('pgadmin:browser:tree:add', obj.onAddTreeNode, obj);
       obj.Events.on('pgadmin:browser:tree:update', obj.onUpdateTreeNode, obj);
       obj.Events.on('pgadmin:browser:tree:refresh', obj.onRefreshTreeNode, obj);
@@ -595,7 +607,35 @@ define('pgadmin.browser', [
       obj.register_to_activity_listener(document);
       obj.start_inactivity_timeout_daemon();
     },
+    check_corrupted_db_file: function() {
+      $.ajax({
+        url: url_for('browser.check_corrupted_db_file'),
+        type: 'GET',
+        dataType: 'json',
+        contentType: 'application/json',
+      }).done((res)=> {
+        if(res.data.length > 0) {
 
+          Alertify.alert(
+            'Warning',
+            'pgAdmin detected unrecoverable corruption in it\'s SQLite configuration database. ' +
+            'The database has been backed up and recreated with default settings. '+
+            'It may be possible to recover data such as query history manually from '+
+            'the original/corrupt file using a tool such as DB Browser for SQLite if desired.'+
+            '<br><br>Original file: ' + res.data + '<br>Replacement file: ' +
+            res.data.substring(0, res.data.length - 14)
+          )
+            .set({'closable': true,
+              'onok': function() {
+              },
+            });
+
+
+        }
+      }).fail(function(xhr, status, error) {
+        Alertify.alert(error);
+      });
+    },
     init_master_password: function() {
       let self = this;
       // Master password dialog
@@ -880,7 +920,7 @@ define('pgadmin.browser', [
         $dropdown.empty();
         if(o.menu == 'help'){
           $dropdown.append('<div id="quick-search-component"></div>');
-          $dropdown.append('<div class="menu-groups"><span class="fa fa-list" style="font-weight:900 !important;"></span> &nbsp;SUGGESTED SITES</div>');
+          $dropdown.append('<div class="menu-groups"><span class="fa fa-list" style="font-weight:900 !important;"></span> &nbsp;' + gettext('SUGGESTED SITES') + '</div>');
         }
 
         if (pgAdmin.Browser.MenuCreator(
@@ -907,7 +947,12 @@ define('pgadmin.browser', [
 
         window.open(fullUrl, 'postgres_help');
       } else if(type == 'dialog_help') {
-        window.open(url, 'pgadmin_help');
+        if (pgWindow && pgWindow.default) {
+          pgWindow.default.open(url, 'pgadmin_help');
+        }
+        else {
+          window.open(url, 'pgadmin_help');
+        }
       }
       $('#live-search-field').focus();
     },

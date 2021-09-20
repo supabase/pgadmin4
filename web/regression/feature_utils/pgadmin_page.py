@@ -37,6 +37,18 @@ class PgadminPage:
         self.timeout = 30
         self.app_start_timeout = 90
 
+    def login_to_app(self, user_detail):
+        if not (self.check_if_element_exist_by_xpath(
+                '//a[@id="navbar-user"]', 1)):
+            user_edt_box_el = self.driver.find_element_by_name('email')
+            user_edt_box_el.send_keys(user_detail['login_username'])
+            password_edt_box_el = self.driver.find_element_by_name('password')
+            password_edt_box_el.send_keys(user_detail['login_password'])
+            submit_btn = self.driver.find_element_by_xpath(
+                '//button[@value="Login"]')
+            submit_btn.click()
+            self.wait_for_spinner_to_disappear()
+
     def reset_layout(self):
         attempt = 0
         while attempt < 4:
@@ -57,7 +69,15 @@ class PgadminPage:
         self.wait_for_reloading_indicator_to_disappear()
 
     def refresh_page(self):
-        self.driver.refresh()
+        try:
+            self.driver.refresh()
+            # wait until alert is present
+            WebDriverWait(self.driver, 1).until(EC.alert_is_present())
+
+            # switch to alert and accept it
+            self.driver.switch_to.alert.accept()
+        except TimeoutException:
+            pass
 
     def click_modal(self, button_text):
         time.sleep(0.5)
@@ -300,6 +320,7 @@ class PgadminPage:
         delete_menu_item = self.find_by_partial_link_text("Remove Server")
         self.click_element(delete_menu_item)
         self.click_modal('Yes')
+        time.sleep(1)
 
     def select_tree_item(self, tree_item_text):
         item = self.find_by_xpath(
@@ -1122,8 +1143,10 @@ class PgadminPage:
     def wait_for_query_tool_loading_indicator_to_disappear(self, timeout=20):
         def spinner_has_disappeared(driver):
             try:
+                # Refer the status message as spinner appears only on the
+                # the data output panel
                 spinner = driver.find_element_by_css_selector(
-                    "#editor-panel .pg-sp-container"
+                    ".sql-editor .sql-editor-busy-text-status"
                 )
                 return "d-none" in spinner.get_attribute("class")
             except NoSuchElementException:
@@ -1288,13 +1311,15 @@ class PgadminPage:
             # Must step
             el.click()
             if 'mac' in platform:
-                # FF step
-                el.send_keys(Keys.COMMAND + "v")
                 # Chrome Step
-                actions.key_down(Keys.SHIFT)
-                actions.send_keys(Keys.INSERT)
-                actions.key_up(Keys.SHIFT)
-                actions.perform()
+                if self.driver.capabilities['browserName'] == 'chrome':
+                    actions.key_down(Keys.SHIFT)
+                    actions.send_keys(Keys.INSERT)
+                    actions.key_up(Keys.SHIFT)
+                    actions.perform()
+                else:
+                    # FF step
+                    el.send_keys(Keys.COMMAND + "v")
             else:
                 el.send_keys(Keys.CONTROL + "v")
 
@@ -1308,3 +1333,7 @@ class PgadminPage:
         except TimeoutException:
             element_located_status = False
         return element_located_status
+
+    def clear_edit_box(self, edit_box_webelement):
+        while not edit_box_webelement.get_attribute("value") == "":
+            edit_box_webelement.send_keys(Keys.BACK_SPACE)

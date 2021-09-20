@@ -35,8 +35,10 @@ Mode is pre-configured for security.
    login
    user_management
    change_user_password
+   restore_locked_user
    ldap
    kerberos
+   oauth2
 
 
 .. note:: Pre-compiled and configured installation packages are available for

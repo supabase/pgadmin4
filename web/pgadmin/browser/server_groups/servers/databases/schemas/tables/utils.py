@@ -294,20 +294,25 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
                 idxcons_utils.get_index_constraints(self.conn, did, tid, ctype)
             if status:
                 for cons in constraints:
-                    data.setdefault(
-                        index_constraints[ctype], []).append(cons)
+                    if not self.\
+                            _is_partition_and_constraint_inherited(cons, data):
+                        data.setdefault(
+                            index_constraints[ctype], []).append(cons)
 
         # Add Foreign Keys
         status, foreign_keys = fkey_utils.get_foreign_keys(self.conn, tid)
         if status:
             for fk in foreign_keys:
-                data.setdefault('foreign_key', []).append(fk)
+                if not self._is_partition_and_constraint_inherited(fk, data):
+                    data.setdefault('foreign_key', []).append(fk)
 
         # Add Check Constraints
         status, check_constraints = \
             check_utils.get_check_constraints(self.conn, tid)
         if status:
-            data['check_constraint'] = check_constraints
+            for cc in check_constraints:
+                if not self._is_partition_and_constraint_inherited(cc, data):
+                    data.setdefault('check_constraint', []).append(cc)
 
         # Add Exclusion Constraint
         status, exclusion_constraints = \
@@ -315,6 +320,23 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
         if status:
             for ex in exclusion_constraints:
                 data.setdefault('exclude_constraint', []).append(ex)
+
+    @staticmethod
+    def _is_partition_and_constraint_inherited(constraint, data):
+
+        """
+        This function will check whether a constraint is local or
+        inherited only for partition table
+        :param constraint: given constraint
+        :param data: partition table data
+        :return: True or False based on condition
+        """
+        # check whether the table is partition or not, then check conislocal
+        if 'relispartition' in data and data['relispartition'] is True:
+            if 'conislocal' in constraint \
+                    and constraint['conislocal'] is False:
+                return True
+        return False
 
     def get_table_dependents(self, tid):
         """
@@ -603,7 +625,31 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
         elif not estimated_row_count:
             res['rows'][0]['rows_cnt'] = estimated_row_count
 
+        # Fetch privileges
+        sql = render_template("/".join([self.table_template_path,
+                                        self._ACL_SQL]),
+                              tid=tid, scid=scid)
+        status, tblaclres = self.conn.execute_dict(sql)
+        if not status:
+            return internal_server_error(errormsg=res)
+
+        # Get Formatted Privileges
+        res['rows'][0].update(self._format_tbacl_from_db(tblaclres['rows']))
+
         return True, res
+
+    def _format_tbacl_from_db(self, tbacl):
+        """
+        Returns privileges.
+        Args:
+            tbacl: Privileges Dict
+        """
+        privileges = []
+        for row in tbacl:
+            priv = parse_priv_from_db(row)
+            privileges.append(priv)
+
+        return {"acl": privileges}
 
     def _format_column_list(self, data):
         # Now we have all lis of columns which we need
@@ -649,6 +695,12 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
         if 'relacl' in data:
             data['relacl'] = parse_priv_to_db(data['relacl'], self.acl)
 
+        if 'acl' in data:
+            for acl in data['acl']:
+                data.update({'revoke_all': []})
+                if len(acl['privileges']) > 0 and len(acl['privileges']) < 7:
+                    data['revoke_all'].append(acl['grantee'])
+
         # if table is partitions then
         if 'relispartition' in data and data['relispartition']:
             table_sql = render_template("/".join([self.partition_template_path,
@@ -681,6 +733,12 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
         from pgadmin.browser.server_groups.servers.databases.schemas. \
             tables.indexes import utils as index_utils
         for row in rset['rows']:
+            # Do not include inherited indexes as those are automatically
+            # created by postgres. If index is inherited, exclude it
+            # from main sql
+            if 'is_inherited' in row and row['is_inherited'] is True:
+                continue
+
             index_sql = index_utils.get_reverse_engineered_sql(
                 self.conn, schema=schema, table=table, did=did, tid=tid,
                 idx=row['oid'], datlastsysoid=self.datlastsysoid,
@@ -820,7 +878,7 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
             main_sql.append(rules_sql)
 
     def _get_resql_for_partitions(self, data, rset, json_resp,
-                                  diff_partition_sql, main_sql):
+                                  diff_partition_sql, main_sql, did):
         """
         ##########################################
         # Reverse engineered sql for PARTITIONS
@@ -828,6 +886,7 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
         """
 
         sql_header = ''
+        partition_sql_arr = []
         if len(rset['rows']):
             if json_resp:
                 sql_header = "\n-- Partitions SQL"
@@ -900,18 +959,52 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
                 part_data['vacuum_toast'] = \
                     copy.deepcopy(self.parse_vacuum_data(
                         self.conn, row, 'toast'))
-                partition_sql += render_template("/".join(
+
+                scid = row['schema_id']
+                schema = part_data['schema']
+                table = part_data['name']
+
+                # Get all the supported constraints for partition table
+                self._add_constrints_to_output(part_data, did, row['oid'])
+
+                partition_sql = render_template("/".join(
                     [self.partition_template_path, self._CREATE_SQL]),
                     data=part_data, conn=self.conn) + '\n'
 
-            # Add into main sql
-            partition_sql = re.sub(self.pattern, self.double_newline,
-                                   partition_sql).strip('\n')
-            partition_main_sql = partition_sql.strip('\n')
+                partition_sql = re.sub(self.pattern, self.double_newline,
+                                       partition_sql).strip('\n')
+
+                partition_main_sql = partition_sql.strip('\n')
+
+                # Add into partition sql to partition array
+                partition_sql_arr.append(partition_main_sql)
+
+                # Get Reverse engineered sql for index
+                self._get_resql_for_index(did, row['oid'], partition_sql_arr,
+                                          json_resp, schema, table)
+
+                # Get Reverse engineered sql for ROW SECURITY POLICY
+                self._get_resql_for_row_security_policy(scid, row['oid'],
+                                                        json_resp,
+                                                        partition_sql_arr,
+                                                        schema, table)
+
+                # Get Reverse engineered sql for Triggers
+                self._get_resql_for_triggers(row['oid'], json_resp,
+                                             partition_sql_arr, schema, table)
+
+                # Get Reverse engineered sql for Compound Triggers
+                self._get_resql_for_compound_triggers(row['oid'],
+                                                      partition_sql_arr,
+                                                      schema, table)
+
+                # Get Reverse engineered sql for Rules
+                self._get_resql_for_rules(row['oid'], partition_sql_arr, table,
+                                          json_resp)
+
             if not diff_partition_sql:
-                main_sql.append(
-                    sql_header + self.double_newline + partition_main_sql
-                )
+                main_sql.append(sql_header + '\n')
+                main_sql += partition_sql_arr
 
     def get_reverse_engineered_sql(self, **kwargs):
         """
@@ -964,7 +1057,7 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
                 return internal_server_error(errormsg=rset)
 
             self._get_resql_for_partitions(data, rset, json_resp,
-                                           diff_partition_sql, main_sql)
+                                           diff_partition_sql, main_sql, did)
 
         sql = '\n'.join(main_sql)
 
@@ -1024,7 +1117,15 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
         for row in data[part_keys]:
             if row['key_type'] == 'column':
                 partition_scheme += self.qtIdent(
-                    self.conn, row['pt_column']) + ', '
+                    self.conn, row['pt_column'])
+                if 'collationame' in row:
+                    partition_scheme += ' COLLATE %s' % row['collationame']
+
+                if 'op_class' in row:
+                    partition_scheme += ' %s' % row['op_class']
+
+                partition_scheme += ', '
+
             elif row['key_type'] == 'expression':
                 partition_scheme += row['expression'] + ', '
 
@@ -1410,7 +1511,7 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
         else:
             error, errmsg = BaseTableView._check_for_create_sql(data)
             if error:
-                return gettext('-- definition incomplete')
+                return gettext('-- definition incomplete'), data['name']
 
             # validate constraint data.
             self._validate_constraint_data(data)
@@ -1834,13 +1935,15 @@ class BaseTableView(PGChildNodeView, BasePartitionTable, VacuumSettings):
             request.data, encoding='utf-8'
         )
         # Convert str 'true' to boolean type
-        is_cascade = json.loads(data['cascade'])
+        is_cascade = json.loads(data.get('cascade') or 'false')
+        is_identity = json.loads(data.get('identity') or 'false')
 
         data = res['rows'][0]
 
         sql = render_template("/".join([self.table_template_path,
                                         'truncate.sql']),
-                              data=data, cascade=is_cascade)
+                              data=data, cascade=is_cascade,
+                              identity=is_identity)
         status, res = self.conn.execute_scalar(sql)
         if not status:
             return internal_server_error(errormsg=res)

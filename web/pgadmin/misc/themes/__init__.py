@@ -33,6 +33,7 @@ def themes(app):
         def get_theme_css():
             all_themes = get_all_themes()
             theme_css = all_themes['standard']['cssfile'] + '.css'
+            theme = 'standard'
             try:
                 misc_preference = Preferences.module('misc')
                 theme = misc_preference.preference('theme').get()
@@ -42,7 +43,7 @@ def themes(app):
                 # Let the default theme go if exception occurs
                 pass
 
-            return theme_css
+            return theme_css, theme
 
         return {
             'get_theme_css': get_theme_css,

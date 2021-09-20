@@ -20,6 +20,7 @@ things:
 
 from flask_security import UserMixin, RoleMixin
 from flask_sqlalchemy import SQLAlchemy
+import uuid
 
 ##########################################################################
 #
@@ -29,7 +30,7 @@ from flask_sqlalchemy import SQLAlchemy
 #
 ##########################################################################
 
-SCHEMA_VERSION = 27
+SCHEMA_VERSION = 31
 
 ##########################################################################
 #
@@ -76,6 +77,11 @@ class User(db.Model, UserMixin):
     roles = db.relationship('Role', secondary=roles_users,
                             backref=db.backref('users', lazy='dynamic'))
     auth_source = db.Column(db.String(16), unique=True, nullable=False)
+    # fs_uniquifier is required by flask-security-too >= 4.
+    fs_uniquifier = db.Column(db.String(255), unique=True, nullable=False,
+                              default=(lambda _: uuid.uuid4().hex))
+    login_attempts = db.Column(db.Integer, default=0)
+    locked = db.Column(db.Boolean(), default=False)
 
 
 class Setting(db.Model):
@@ -184,6 +190,7 @@ class Server(db.Model):
     tunnel_identity_file = db.Column(db.String(64), nullable=True)
     tunnel_password = db.Column(db.String(64), nullable=True)
     shared = db.Column(db.Boolean(), nullable=False)
+    kerberos_conn = db.Column(db.Boolean(), nullable=False, default=0)
 
     @property
     def serialize(self):
@@ -361,6 +368,11 @@ class SharedServer(db.Model):
 
     __tablename__ = 'sharedserver'
     id = db.Column(db.Integer, primary_key=True)
+    osid = db.Column(
+        db.Integer,
+        db.ForeignKey('server.id'),
+        nullable=False
+    )
     user_id = db.Column(
         db.Integer,
         db.ForeignKey(USER_ID)

@@ -21,7 +21,7 @@ Use the *File* menu to access the following options:
 +-------------------------+---------------------------------------------------------------------------------------------------------+
 | Option                  | Action                                                                                                  |
 +=========================+=========================================================================================================+
-| *Preferences*           | Click to open the :ref:`Preferences <preferences>` dialog to to customize your pgAdmin settings.        |
+| *Preferences*           | Click to open the :ref:`Preferences <preferences>` dialog to customize your pgAdmin settings.           |
 +-------------------------+---------------------------------------------------------------------------------------------------------+
 | *Reset Layout*          | If you have modified the workspace, click to restore the default layout.                                |
 +-------------------------+---------------------------------------------------------------------------------------------------------+
@@ -74,8 +74,9 @@ following options (in alphabetical order):
 +-----------------------------+--------------------------------------------------------------------------------------------------------------------------+
 | *Trigger(s)*                | Click to *Disable* or *Enable* trigger(s) for the currently selected table. Options are displayed on the flyout menu.    |
 +-----------------------------+--------------------------------------------------------------------------------------------------------------------------+
-| *Truncate*                  | Click to remove all rows from a table (*Truncate*) or to remove all rows from a table and its child tables               |
-|                             | (*Truncate Cascade*). Options are displayed on the flyout menu.                                                          |
+| *Truncate*                  | Click to remove all rows from a table (*Truncate*), to remove all rows from a table and its child tables                 |
+|                             | (*Truncate Cascade*) or to remove all rows from a table and automatically restart sequences owned by columns             |
+|                             | (*Truncate Restart Identity*). Options are displayed on the flyout menu.                                                 |
 +-----------------------------+--------------------------------------------------------------------------------------------------------------------------+
 | *View Data*                 | Click to access a context menu that provides several options for viewing data (see below).                               |
 +-----------------------------+--------------------------------------------------------------------------------------------------------------------------+
@@ -127,6 +128,8 @@ Use the *Tools* menu to access the following options (in alphabetical order):
 | *Schema Diff*             | Click to open the :ref:`Schema Diff <schema_diff_feature>` and start comparing two database or two schema.                                |
 +---------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
 | *Search Objects...*       | Click to open the :ref:`Search Objects... <search_objects>` and start searching any kind of objects in a database.                        |
++---------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
+| *PSQL Tool*               | Click to open the :ref:`PSQL Tool <psql_tool>` and start PSQL in the current database context.                                            |
 +---------------------------+-------------------------------------------------------------------------------------------------------------------------------------------+
 
 The Help Menu

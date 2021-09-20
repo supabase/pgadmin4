@@ -15,12 +15,12 @@ from flask import url_for, Response, render_template, request, current_app
 from flask_babelex import gettext as _
 from flask_security import login_required, current_user
 from pgadmin.misc.bgprocess.processes import BatchProcess, IProcessDesc
-from pgadmin.utils import PgAdminModule, html, does_utility_exist
+from pgadmin.utils import PgAdminModule, html, does_utility_exist, get_server
 from pgadmin.utils.ajax import bad_request, make_json_response
 from pgadmin.utils.driver import get_driver
 
 from config import PG_DEFAULT_DRIVER
-from pgadmin.model import Server
+from pgadmin.model import Server, SharedServer
 from pgadmin.utils.constants import MIMETYPE_APP_JS
 
 MODULE_NAME = 'maintenance'
@@ -81,18 +81,49 @@ class Message(IProcessDesc):
         self.data = _data
         self.query = _query
 
+    def get_server_name(self):
+        s = get_server(self.sid)
+
+        from pgadmin.utils.driver import get_driver
+        driver = get_driver(PG_DEFAULT_DRIVER)
+        manager = driver.connection_manager(self.sid)
+
+        host = manager.local_bind_host if manager.use_ssh_tunnel else s.host
+        port = manager.local_bind_port if manager.use_ssh_tunnel else s.port
+
+        s.name = html.safe_str(s.name)
+        host = html.safe_str(host)
+        port = html.safe_str(port)
+        return "{0} ({1}:{2})".format(s.name, host, port)
+
+    def get_op(self):
+        op = self._check_for_vacuum()
+
+        if self.data['op'] == "ANALYZE":
+            op = _('ANALYZE')
+            if self.data['verbose']:
+                op += '(' + _('VERBOSE') + ')'
+
+        if self.data['op'] == "REINDEX":
+            if 'schema' in self.data and self.data['schema']:
+                if 'primary_key' in self.data or \
+                    'unique_constraint' in self.data or \
+                        'index' in self.data:
+                    return _('REINDEX INDEX')
+                else:
+                    return _('REINDEX TABLE')
+            op = _('REINDEX')
+
+        if self.data['op'] == "CLUSTER":
+            op = _('CLUSTER')
+
+        return op
+
     @property
     def message(self):
-        res = _("Maintenance ({0})")
-
-        if self.data['op'] == "VACUUM":
-            return res.format(_('Vacuum'))
-        if self.data['op'] == "ANALYZE":
-            return res.format(_('Analyze'))
-        if self.data['op'] == "REINDEX":
-            return res.format(_('Reindex'))
-        if self.data['op'] == "CLUSTER":
-            return res.format(_('Cluster'))
+        res = _("{0} on database '{1}' of server {2}")
+        return res.format(
+            self.get_op(), self.data['database'], self.get_server_name())
 
     @property
     def type_desc(self):
@@ -119,28 +150,8 @@ class Message(IProcessDesc):
         return res
 
     def details(self, cmd, args):
-        res = self._check_for_vacuum()
 
-        if self.data['op'] == "ANALYZE":
-            res = _('ANALYZE')
-            if self.data['verbose']:
-                res += '(' + _('VERBOSE') + ')'
-
-        if self.data['op'] == "REINDEX":
-            if 'schema' in self.data and self.data['schema']:
-                if 'primary_key' in self.data or\
-                    'unique_constraint' in self.data or\
-                        'index' in self.data:
-                    return _('REINDEX INDEX')
-                else:
-                    return _('REINDEX TABLE')
-            res = _('REINDEX')
-
-        if self.data['op'] == "CLUSTER":
-            res = _('CLUSTER')
-
-        res = '<div>' + html.safe_str(res)
-
+        res = '<div>' + self.message
         res += '</div><div class="py-1">'
         res += _("Running Query:")
         res += '<div class="pg-bg-cmd enable-selection p-1">'
@@ -209,8 +220,8 @@ def create_maintenance_job(sid, did):
     index_name = get_index_name(data)
 
     # Fetch the server details like hostname, port, roles etc
-    server = Server.query.filter_by(
-        id=sid).first()
+
+    server = get_server(sid)
 
     if server is None:
         return make_json_response(
@@ -257,7 +268,7 @@ def create_maintenance_job(sid, did):
 
     try:
         p = BatchProcess(
-            desc=Message(sid, data, query),
+            desc=Message(server.id, data, query),
             cmd=utility, args=args
         )
         manager.export_password_env(p.id)
@@ -300,9 +311,8 @@ def check_utility_exists(sid):
     Returns:
         None
     """
-    server = Server.query.filter_by(
-        id=sid, user_id=current_user.id
-    ).first()
+
+    server = get_server(sid)
 
     if server is None:
         return make_json_response(

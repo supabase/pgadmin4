@@ -52,7 +52,6 @@ class CastModule(CollectionNodeModule):
 
     def __init__(self, *args, **kwargs):
         super(CastModule, self).__init__(*args, **kwargs)
-        self.min_gpdbver = 1000000000
 
     def get_nodes(self, gid, sid, did):
         """
@@ -405,7 +404,7 @@ class CastView(PGChildNodeView, SchemaDiffObjectCompare):
             if not status:
                 return internal_server_error(errormsg=res)
 
-            # we need oid to to add object in tree at browser, below sql will
+            # we need oid to add object in tree at browser, below sql will
             # gives the same
             last_system_oid = 0 if self.blueprint.show_system_objects else \
                 self.datlastsysoid

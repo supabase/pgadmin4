@@ -155,9 +155,7 @@ def check_precondition(f):
                 kwargs['did']]['datistemplate']
 
         # Set the template path for the SQL scripts
-        if self.manager.server_type == 'gpdb':
-            _temp = self.gpdb_template_path(self.manager.version)
-        elif self.manager.server_type == 'ppas':
+        if self.manager.server_type == 'ppas':
             _temp = self.ppas_template_path(self.manager.version)
         else:
             _temp = self.pg_template_path(self.manager.version)
@@ -270,13 +268,6 @@ class SchemaView(PGChildNodeView):
         Returns the template path for PostgreSQL servers.
         """
         return 'pg/#{0}#'.format(ver)
-
-    @staticmethod
-    def gpdb_template_path(ver):
-        """
-        Returns the template path for GreenPlum servers.
-        """
-        return '#gpdb#{0}#'.format(ver)
 
     def format_request_acls(self, data, modified=False, specific=None):
         acls = {}
@@ -630,7 +621,7 @@ It may have been removed by another user.
                     errormsg=res
                 )
 
-            # we need oid to to add object in tree at browser,
+            # we need oid to add object in tree at browser,
             # below sql will gives the same
             SQL = render_template(
                 "/".join([self.template_path, 'sql/oid.sql']),

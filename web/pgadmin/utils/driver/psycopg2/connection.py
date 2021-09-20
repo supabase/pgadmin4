@@ -18,11 +18,13 @@ import select
 import datetime
 from collections import deque
 import psycopg2
-from flask import g, current_app
+import threading
+from flask import g, current_app, session
 from flask_babelex import gettext
 from flask_security import current_user
 from pgadmin.utils.crypto import decrypt, encrypt
 from psycopg2.extensions import encodings
+from os import environ
 
 import config
 from pgadmin.model import User
@@ -30,7 +32,7 @@ from pgadmin.utils.exception import ConnectionLost, CryptKeyMissing
 from pgadmin.utils import get_complete_file_path
 from ..abstract import BaseConnection
 from .cursor import DictCursor
-from .typecast import register_global_typecasters, \
+from .typecast import numeric_typecasters, register_global_typecasters,\
     register_string_typecasters, register_binary_typecasters, \
     unregister_numeric_typecasters, \
     register_array_to_string_typecasters, ALL_JSON_TYPES
@@ -38,6 +40,9 @@ from .encoding import get_encoding, configure_driver_encodings
 from pgadmin.utils import csv
 from pgadmin.utils.master_password import get_crypt_key
 from io import StringIO
+from pgadmin.utils.constants import KERBEROS
+
+lock = threading.Lock()
 
 _ = gettext
 
@@ -313,6 +318,13 @@ class Connection(BaseConnection):
             os.environ['PGAPPNAME'] = '{0} - {1}'.format(
                 config.APP_NAME, conn_id)
 
+            if config.SERVER_MODE and \
+                    session['auth_source_manager']['current_source'] == \
+                    KERBEROS and 'KRB5CCNAME' in session\
+                    and manager.kerberos_conn:
+                lock.acquire()
+                environ['KRB5CCNAME'] = session['KRB5CCNAME']
+
             pg_conn = psycopg2.connect(
                 host=manager.local_bind_host if manager.use_ssh_tunnel
                 else manager.host,
@@ -340,7 +352,13 @@ class Connection(BaseConnection):
             if self.async_ == 1:
                 self._wait(pg_conn)
 
+            if config.SERVER_MODE and \
+                    session['auth_source_manager']['current_source'] == \
+                    KERBEROS:
+                environ['KRB5CCNAME'] = ''
+
         except psycopg2.Error as e:
+            environ['KRB5CCNAME'] = ''
             manager.stop_ssh_tunnel()
             if e.pgerror:
                 msg = e.pgerror
@@ -358,6 +376,11 @@ class Connection(BaseConnection):
                 )
             )
             return False, msg
+        finally:
+            if config.SERVER_MODE and \
+                    session['auth_source_manager']['current_source'] == \
+                    KERBEROS and lock.locked():
+                lock.release()
 
         # Overwrite connection notice attr to support
         # more than 50 notices at a time
@@ -539,6 +562,26 @@ WHERE db.datname = current_database()""")
                 if len(manager.db_info) == 1:
                     manager.did = res['did']
 
+                if manager.sversion >= 120000:
+                    status = self._execute(cur, """
+        SELECT
+             gss_authenticated, encrypted
+        FROM
+            pg_catalog.pg_stat_gssapi
+        WHERE pid = pg_backend_pid()""")
+                    if status is None:
+                        if cur.rowcount > 0:
+                            res_enc = cur.fetchmany(1)[0]
+                            manager.db_info[res['did']]['gss_authenticated'] =\
+                                res_enc['gss_authenticated']
+                            manager.db_info[res['did']]['gss_encrypted'] = \
+                                res_enc['encrypted']
+
+                            if len(manager.db_info) == 1:
+                                manager.gss_authenticated = \
+                                    res_enc['gss_authenticated']
+                                manager.gss_encrypted = res_enc['encrypted']
+
         self._set_user_info(cur, manager, **kwargs)
 
         self._set_server_type_and_password(kwargs, manager)
@@ -562,11 +605,14 @@ WHERE db.datname = current_database()""")
             can_create_role,
             CASE WHEN roles.rolsuper THEN true
             ELSE roles.rolcreatedb END as can_create_db,
-            CASE WHEN 'pg_signal_backend'=ANY(ARRAY(
-                SELECT pg_catalog.pg_roles.rolname FROM
-                pg_catalog.pg_auth_members m JOIN pg_catalog.pg_roles ON
-                (m.roleid = pg_catalog.pg_roles.oid) WHERE
-                 m.member = roles.oid)) THEN True
+            CASE WHEN 'pg_signal_backend'=ANY(ARRAY(WITH RECURSIVE cte AS (
+            SELECT pg_roles.oid,pg_roles.rolname FROM pg_roles
+                WHERE pg_roles.oid = roles.oid
+            UNION ALL
+            SELECT m.roleid,pgr.rolname FROM cte cte_1
+                JOIN pg_auth_members m ON m.member = cte_1.oid
+                JOIN pg_roles pgr ON pgr.oid = m.roleid)
+            SELECT rolname  FROM cte)) THEN True
             ELSE False END as can_signal_backend
         FROM
             pg_catalog.pg_roles as roles
@@ -836,7 +882,7 @@ WHERE db.datname = current_database()""")
 
             return results
 
-        def gen(trans_obj, quote='strings', quote_char="'",
+        def gen(conn_obj, trans_obj, quote='strings', quote_char="'",
                 field_separator=',', replace_nulls_with=None):
 
             cur.scroll(0, mode='absolute')
@@ -844,6 +890,9 @@ WHERE db.datname = current_database()""")
             if not results:
                 yield gettext('The query executed did not return any data.')
                 return
+
+            # Type cast the numeric values
+            results = numeric_typecasters(results, conn_obj)
 
             header = []
             json_columns = []
@@ -912,7 +961,7 @@ WHERE db.datname = current_database()""")
         # Registering back type caster for large size data types to string
         # which was unregistered at starting
         register_string_typecasters(self.conn)
-        return True, gen
+        return True, gen, self
 
     def execute_scalar(self, query, params=None,
                        formatted_exception_msg=False):
@@ -1435,7 +1484,6 @@ Failed to reset the connection to the server due to following error:
         Args:
             conn: connection object
         """
-
         while True:
             state = conn.poll()
             if state == psycopg2.extensions.POLL_OK:

@@ -20,11 +20,11 @@ from flask_babelex import gettext as _
 from flask_security import login_required, current_user
 from pgadmin.misc.bgprocess.processes import BatchProcess, IProcessDesc
 from pgadmin.utils import PgAdminModule, get_storage_directory, html, \
-    fs_short_path, document_dir, does_utility_exist
+    fs_short_path, document_dir, does_utility_exist, get_server
 from pgadmin.utils.ajax import make_json_response, bad_request
 
 from config import PG_DEFAULT_DRIVER
-from pgadmin.model import Server
+from pgadmin.model import Server, SharedServer
 from pgadmin.misc.bgprocess import escape_dquotes_process_arg
 from pgadmin.utils.constants import MIMETYPE_APP_JS
 
@@ -115,10 +115,7 @@ class BackupMessage(IProcessDesc):
                 self.cmd += cmd_arg(arg)
 
     def get_server_details(self):
-        # Fetch the server details like hostname, port, roles etc
-        s = Server.query.filter_by(
-            id=self.sid, user_id=current_user.id
-        ).first()
+        s = get_server(self.sid)
 
         from pgadmin.utils.driver import get_driver
         driver = get_driver(PG_DEFAULT_DRIVER)
@@ -417,9 +414,7 @@ def create_backup_objects_job(sid):
         return bad_request(errormsg=str(e))
 
     # Fetch the server details like hostname, port, roles etc
-    server = Server.query.filter_by(
-        id=sid, user_id=current_user.id
-    ).first()
+    server = get_server(sid)
 
     if server is None:
         return make_json_response(
@@ -464,7 +459,7 @@ def create_backup_objects_job(sid):
             escaped_args.append(data['database'])
             p = BatchProcess(
                 desc=BackupMessage(
-                    BACKUP.OBJECT, sid, bfile,
+                    BACKUP.OBJECT, server.id, bfile,
                     *args,
                     database=data['database']
                 ),
@@ -475,7 +470,7 @@ def create_backup_objects_job(sid):
                 desc=BackupMessage(
                     BACKUP.SERVER if backup_obj_type != 'globals'
                     else BACKUP.GLOBALS,
-                    sid, bfile,
+                    server.id, bfile,
                     *args
                 ),
                 cmd=utility, args=escaped_args
@@ -521,9 +516,7 @@ def check_utility_exists(sid, backup_obj_type):
     Returns:
         None
     """
-    server = Server.query.filter_by(
-        id=sid, user_id=current_user.id
-    ).first()
+    server = get_server(sid)
 
     if server is None:
         return make_json_response(

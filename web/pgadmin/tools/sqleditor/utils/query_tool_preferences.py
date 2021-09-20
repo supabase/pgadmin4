@@ -80,7 +80,7 @@ def register_query_tool_preferences(self):
 
     self.auto_rollback = self.preference.register(
         'Options', 'auto_rollback',
-        gettext("Auto rollback?"), 'boolean', False,
+        gettext("Auto rollback on error?"), 'boolean', False,
         category_label=PREF_LABEL_OPTIONS,
         help_str=gettext('Set auto rollback on or off by default in new Query '
                          'Tool tabs.')
@@ -125,6 +125,17 @@ def register_query_tool_preferences(self):
         help_str=gettext(
             'Specifies whether or not to prompt user to commit or rollback '
             'an active transaction on Query Tool exit.'
+        )
+    )
+
+    self.show_prompt_commit_transaction = self.preference.register(
+        'Options', 'copy_sql_to_query_tool',
+        gettext("Copy SQL from main window to query tool?"), 'boolean',
+        False,
+        category_label=PREF_LABEL_OPTIONS,
+        help_str=gettext(
+            'Specifies whether or not to copy SQL to query tool from '
+            'main window.'
         )
     )
 
@@ -266,6 +277,31 @@ def register_query_tool_preferences(self):
             'allowClear': False,
             'tags': True
         }
+    )
+
+    self.column_data_auto_resize = self.preference.register(
+        'Results_grid', 'column_data_auto_resize',
+        gettext("Columns sized by"), 'radioModern', 'by_data',
+        options=[{'label': gettext('Column data'), 'value': 'by_data'},
+                 {'label': gettext('Column name'), 'value': 'by_name'}],
+        category_label=PREF_LABEL_RESULTS_GRID,
+        help_str=gettext(
+            'If set to \'Column data\' columns will auto-size to the maximum '
+            'width of the data in the column as loaded in the first batch. If '
+            'set to \'Column name\', the column will be sized to the widest '
+            'of the data type or column name.'
+        ),
+        dependents=['column_data_max_width']
+    )
+
+    self.column_data_max_width = self.preference.register(
+        'Results_grid', 'column_data_max_width',
+        gettext("Maximum column width"), 'integer', 0,
+        category_label=PREF_LABEL_RESULTS_GRID,
+        help_str=gettext(
+            'Specify the maximum width of the column in pixels when '
+            '\'Columns sized by \' is set to \'Column data\'.'
+        ),
     )
 
     self.sql_font_size = self.preference.register(

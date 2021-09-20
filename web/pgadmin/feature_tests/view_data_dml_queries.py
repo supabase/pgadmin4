@@ -241,13 +241,32 @@ CREATE TABLE public.nonintpkey
             else:
                 ActionChains(self.driver).send_keys(value). \
                     send_keys(Keys.ENTER).perform()
-        elif cell_type in ['text', 'json', 'text[]', 'boolean[]']:
+        elif cell_type in ['text', 'text[]', 'boolean[]']:
             text_area_ele = self.page.find_by_css_selector(
                 QueryToolLocators.row_editor_text_area_css)
             text_area_ele.clear()
             text_area_ele.click()
             text_area_ele.send_keys(value)
-
+            # Click on editor's Save button
+            self.page.find_by_css_selector(
+                QueryToolLocators.text_editor_ok_btn_css).click()
+        elif cell_type in ['json', 'jsonb']:
+            jsoneditor_area_ele = self.page.find_by_css_selector(
+                QueryToolLocators.json_editor_text_area_css)
+            platform = 'mac'
+            if "platform" in self.driver.capabilities:
+                platform = (self.driver.capabilities["platform"]).lower()
+            elif "platformName" in self.driver.capabilities:
+                platform = (self.driver.capabilities["platformName"]).lower()
+            if 'mac' in platform:
+                key_to_press = Keys.COMMAND
+            else:
+                key_to_press = Keys.CONTROL
+            actions = ActionChains(self.driver)
+            actions.move_to_element(jsoneditor_area_ele).click().perform()
+            actions.key_down(key_to_press).send_keys('a').key_up(key_to_press)\
+                .send_keys(Keys.DELETE).perform()
+            actions.send_keys(value) .perform()
             # Click on editor's Save button
             self.page.find_by_css_selector(
                 QueryToolLocators.text_editor_ok_btn_css).click()

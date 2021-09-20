@@ -119,6 +119,7 @@ class SqlEditorModule(PgAdminModule):
             'sqleditor.get_new_connection_data',
             'sqleditor.get_new_connection_database',
             'sqleditor.get_new_connection_user',
+            'sqleditor._check_server_connection_status',
             'sqleditor.get_new_connection_role',
             'sqleditor.connect_server',
             'sqleditor.connect_server_with_user',
@@ -350,6 +351,7 @@ def poll(trans_id):
     oids = None
     additional_messages = None
     notifies = None
+    data_obj = {}
 
     # Check the transaction and connection status
     status, error_msg, conn, trans_obj, session_obj = \
@@ -502,6 +504,9 @@ def poll(trans_id):
         result = error_msg
 
     transaction_status = conn.transaction_status()
+    data_obj['db_name'] = conn.db
+    data_obj['db_id'] = trans_obj.did \
+        if trans_obj is not None and hasattr(trans_obj, 'did') else 0
 
     return make_json_response(
         data={
@@ -519,6 +524,7 @@ def poll(trans_id):
             'has_oids': has_oids,
             'oids': oids,
             'transaction_status': transaction_status,
+            'data_obj': data_obj,
         },
         encoding=conn.python_encoding
     )
@@ -1351,7 +1357,8 @@ def start_query_download_tool(trans_id):
     try:
 
         # This returns generator of records.
-        status, gen = sync_conn.execute_on_server_as_csv(records=2000)
+        status, gen, conn_obj = \
+            sync_conn.execute_on_server_as_csv(records=2000)
 
         if not status:
             return make_json_response(
@@ -1361,13 +1368,13 @@ def start_query_download_tool(trans_id):
             )
 
         r = Response(
-            gen(
+            gen(conn_obj,
                 trans_obj,
                 quote=blueprint.csv_quoting.get(),
                 quote_char=blueprint.csv_quote_char.get(),
                 field_separator=blueprint.csv_field_separator.get(),
                 replace_nulls_with=blueprint.replace_nulls_with.get()
-            ),
+                ),
             mimetype='text/csv' if
             blueprint.csv_field_separator.get() == ','
             else 'text/plain'
@@ -1480,6 +1487,49 @@ def get_filter_data(trans_id):
 
 
 @blueprint.route(
+    '/get_server_connection/<int:sgid>/<int:sid>',
+    methods=["GET"], endpoint='_check_server_connection_status'
+)
+@login_required
+def _check_server_connection_status(sgid, sid=None):
+    """
+    This function returns the server connection details
+    """
+    try:
+        driver = get_driver(PG_DEFAULT_DRIVER)
+        from pgadmin.browser.server_groups.servers import \
+            server_icon_and_background
+        server = Server.query.filter_by(
+            id=sid).first()
+
+        manager = driver.connection_manager(server.id)
+        conn = manager.connection()
+        connected = conn.connected()
+
+        msg = "Success"
+        return make_json_response(
+            data={
+                'status': True,
+                'msg': msg,
+                'result': {
+                    'server': connected
+                }
+            }
+        )
+
+    except Exception:
+        return make_json_response(
+            data={
+                'status': False,
+                'msg': ERROR_FETCHING_DATA,
+                'result': {
+                    'server': False
+                }
+            }
+        )
+
+
+@blueprint.route(
     '/new_connection_dialog/<int:sgid>/<int:sid>',
     methods=["GET"], endpoint='get_new_connection_data'
 )
@@ -1570,9 +1620,13 @@ def get_new_connection_database(sgid, sid=None):
                     db_restrictions=db_disp_res
                 )
                 status, databases = conn.execute_dict(sql, params)
+                _db = manager.db
                 database_list = [
-                    {'label': database['name'], 'value': database['did']} for
-                    database in databases['rows']]
+                    {
+                        'label': database['name'],
+                        'value': database['did'],
+                        'selected': True if database['name'] == _db else False
+                    } for database in databases['rows']]
             else:
                 status = False
 

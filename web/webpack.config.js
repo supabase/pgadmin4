@@ -229,7 +229,6 @@ var themeCssRules = function(theme_name) {
         options: {
           resources: function(_theme_name){
             let ret_res = [
-              './pgadmin/static/scss/resources/' + _theme_name + '/_theme.variables.scss',
               './pgadmin/static/scss/resources/pgadmin.resources.scss',
             ];
             if(_theme_name!='standard') {
@@ -336,7 +335,7 @@ var getThemeWebpackConfig = function(theme_name) {
 };
 
 var pgadminThemesWebpack = [];
-Object.keys(pgadminThemes).map((theme_name)=>{
+Object.keys(pgadminThemes).forEach((theme_name)=>{
   pgadminThemesWebpack.push(getThemeWebpackConfig(theme_name));
 });
 
@@ -356,6 +355,7 @@ module.exports = [{
     debugger_direct: './pgadmin/tools/debugger/static/js/direct.js',
     schema_diff: './pgadmin/tools/schema_diff/static/js/schema_diff_hook.js',
     erd_tool: './pgadmin/tools/erd/static/js/erd_tool_hook.js',
+    psql_tool: './pgadmin/tools/psql/static/js/index.js',
     file_utils: './pgadmin/misc/file_manager/static/js/utility.js',
     'pgadmin.style': pgadminCssStyles,
     pgadmin: pgadminScssStyles,
@@ -367,7 +367,7 @@ module.exports = [{
     libraryTarget: 'amd',
     path: outputPath,
     filename: '[name].js',
-    chunkFilename: '[name].chunk.js',
+    chunkFilename: '[name].chunk.js?id=[chunkhash]',
     libraryExport: 'default',
     publicPath: '',
   },
@@ -494,7 +494,7 @@ module.exports = [{
           ],
         },
       },
-    }, {
+    },{
       test: require.resolve('./node_modules/acitree/js/jquery.aciTree.min'),
       use: {
         loader: 'imports-loader',
@@ -533,6 +533,7 @@ module.exports = [{
             'pure|pgadmin.tools.storage_manager',
             'pure|pgadmin.tools.search_objects',
             'pure|pgadmin.tools.erd_module',
+            'pure|pgadmin.tools.psql_module',
           ],
         },
       },

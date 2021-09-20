@@ -395,6 +395,13 @@ def get_table_common_data():
             "is_primary_key": False,
             "attoptions": [],
             "seclabels": []
+        }, {
+            "name": "part_col",
+            "cltype": "text",
+            "attacl": [],
+            "is_primary_key": False,
+            "attoptions": [],
+            "seclabels": []
         }],
         "exclude_constraint": [],
         "fillfactor": "",

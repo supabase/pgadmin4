@@ -16,7 +16,7 @@
 {% if data.coll_inherits|length == 0 and  data.columns|length == 0 and not data.typname and not data.like_relation and data.primary_key|length == 0 and data.unique_constraint|length == 0 and data.foreign_key|length == 0 and data.check_constraint|length == 0 and data.exclude_constraint|length == 0 %}
 {% set empty_bracket = "\n(\n)"%}
 {% endif %}
-CREATE {% if data.relpersistence %}UNLOGGED {% endif %}TABLE {{conn|qtIdent(data.schema, data.name)}}{{empty_bracket}}
+CREATE {% if data.relpersistence %}UNLOGGED {% endif %}TABLE IF NOT EXISTS {{conn|qtIdent(data.schema, data.name)}}{{empty_bracket}}
 {% if data.typname %}
     OF {{ data.typname }}
 {% endif %}
@@ -101,7 +101,7 @@ TABLESPACE {{ conn|qtIdent(data.spcname) }};
 {### Alter SQL for Owner ###}
 {% if data.relowner %}
 
-ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
+ALTER TABLE IF EXISTS {{conn|qtIdent(data.schema, data.name)}}
     OWNER to {{conn|qtIdent(data.relowner)}};
 {% endif %}
 
@@ -109,7 +109,7 @@ ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
 {## Enable Row Level Security Policy on table ##}
 {#####################################################}
 {% if data.rlspolicy %}
-ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
+ALTER TABLE IF EXISTS {{conn|qtIdent(data.schema, data.name)}}
     ENABLE ROW LEVEL SECURITY;
 {% endif %}
 
@@ -117,7 +117,7 @@ ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
 {## Force Enable Row Level Security Policy on table ##}
 {#####################################################}
 {% if data.forcerlspolicy %}
-ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
+ALTER TABLE IF EXISTS {{conn|qtIdent(data.schema, data.name)}}
     FORCE ROW LEVEL SECURITY;
 {% endif %}
 
@@ -129,6 +129,11 @@ ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
 {% endfor %}
 {% endif %}
 {###  ACL on Table ###}
+{% if data.revoke_all %}
+{% for priv in data.revoke_all %}
+{{ PRIVILEGE.UNSETALL(conn, "TABLE", priv, data.name, data.schema)}}
+{% endfor %}
+{% endif %}
 {% if data.relacl %}
 
 {% for priv in data.relacl %}
@@ -156,19 +161,19 @@ COMMENT ON COLUMN {{conn|qtIdent(data.schema, data.name, c.name)}}
 {###  Add variables to column ###}
 {% if c.attoptions and c.attoptions|length > 0 %}
 
-ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
+ALTER TABLE IF EXISTS {{conn|qtIdent(data.schema, data.name)}}
     {{ VARIABLE.SET(conn, 'COLUMN', c.name, c.attoptions) }}
 
 {% endif %}
 {###  Alter column statistics value ###}
 {% if c.attstattarget is defined and c.attstattarget > -1 %}
-ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
+ALTER TABLE IF EXISTS {{conn|qtIdent(data.schema, data.name)}}
     ALTER COLUMN {{conn|qtTypeIdent(c.name)}} SET STATISTICS {{c.attstattarget}};
 
 {% endif %}
 {###  Alter column storage value ###}
 {% if c.attstorage is defined and c.attstorage != c.defaultstorage %}
-ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
+ALTER TABLE IF EXISTS {{conn|qtIdent(data.schema, data.name)}}
     ALTER COLUMN {{conn|qtTypeIdent(c.name)}} SET STORAGE {%if c.attstorage == 'p' %}
 PLAIN{% elif c.attstorage == 'm'%}MAIN{% elif c.attstorage == 'e'%}
 EXTERNAL{% elif c.attstorage == 'x'%}EXTENDED{% endif %};

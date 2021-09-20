@@ -283,7 +283,8 @@ class TableView(BaseTableView, DataTypeReader, SchemaDiffTableCompare):
         'update_sql': [{'get': 'update_sql'}],
         'delete_sql': [{'get': 'delete_sql'}],
         'count_rows': [{'get': 'count_rows'}],
-        'compare': [{'get': 'compare'}, {'get': 'compare'}]
+        'compare': [{'get': 'compare'}, {'get': 'compare'}],
+        'get_op_class': [{'get': 'get_op_class'}, {'get': 'get_op_class'}],
     })
 
     @BaseTableView.check_precondition
@@ -598,6 +599,38 @@ class TableView(BaseTableView, DataTypeReader, SchemaDiffTableCompare):
         )
 
     @BaseTableView.check_precondition
+    def get_op_class(self, gid, sid, did, scid, tid=None):
+        """
+        This function will return list of op_class method
+        for each access methods available via AJAX response
+        """
+        res = dict()
+        try:
+
+            # for row in rset['rows']:
+            #     # Fetching all the op_classes for each access method
+            SQL = render_template(
+                "/".join([self.table_template_path, 'get_op_class.sql'])
+            )
+            status, result = self.conn.execute_2darray(SQL)
+            if not status:
+                return internal_server_error(errormsg=res)
+
+            op_class_list = [{'label': '', 'value': ''}]
+
+            for r in result['rows']:
+                op_class_list.append({'label': r['opcname'],
+                                      'value': r['opcname']})
+
+            return make_json_response(
+                data=op_class_list,
+                status=200
+            )
+
+        except Exception as e:
+            return internal_server_error(errormsg=str(e))
+
+    @BaseTableView.check_precondition
     def types(self, gid, sid, did, scid, tid=None, clid=None):
         """
         Returns:
@@ -823,9 +856,9 @@ class TableView(BaseTableView, DataTypeReader, SchemaDiffTableCompare):
         if 'relacl' in data:
             data['relacl'] = parse_priv_to_db(data['relacl'], self.acl)
 
-            # Parse & format columns
-            data = column_utils.parse_format_columns(data)
-            data = TableView.check_and_convert_name_to_string(data)
+        # Parse & format columns
+        data = column_utils.parse_format_columns(data)
+        data = TableView.check_and_convert_name_to_string(data)
 
         # 'coll_inherits' is Array but it comes as string from browser
         # We will convert it again to list
@@ -937,7 +970,7 @@ class TableView(BaseTableView, DataTypeReader, SchemaDiffTableCompare):
             if not status:
                 return internal_server_error(errormsg=new_scid)
 
-            # we need oid to to add object in tree at browser
+            # we need oid to add object in tree at browser
             sql = render_template(
                 "/".join([self.table_template_path, self._OID_SQL]),
                 scid=new_scid, data=data

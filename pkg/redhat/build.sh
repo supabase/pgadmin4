@@ -4,8 +4,7 @@
 set -e
 
 # Debugging shizz
-trap 'last_command=$current_command; current_command=$BASH_COMMAND' DEBUG
-trap 'if [ $? -ne 0 ]; then echo "\"${last_command}\" command filed with exit code $?."; fi' EXIT
+trap 'ERRCODE=$? && if [ ${ERRCODE} -ne 0 ]; then echo "The command \"${BASH_COMMAND}\" failed in \"${FUNCNAME}\" with exit code ${ERRCODE}."; fi' EXIT
 
 OS_VERSION=$(cat /etc/os-release | grep "^VERSION_ID=" | awk -F "=" '{ print $2 }' | sed 's/"//g')
 OS_NAME=$(cat /etc/os-release | grep "^ID=" | awk -F "=" '{ print $2 }' | sed 's/"//g')
@@ -95,7 +94,7 @@ Release:	1%{?dist}
 Summary:	The desktop user interface for pgAdmin.
 License:	PostgreSQL
 URL:		https://www.pgadmin.org/
-Requires:	${APP_NAME}-server = ${RPM_VERSION}, libatomic
+Requires:	${APP_NAME}-server = ${RPM_VERSION}, libatomic, xdg-utils
 
 %description
 The desktop user interface for pgAdmin. pgAdmin is the most popular and feature rich Open Source administration and development platform for PostgreSQL, the most advanced Open Source database in the world.
@@ -159,7 +158,7 @@ cp -rfa %{pga_build_root}/web/* \${RPM_BUILD_ROOT}
 
 %files
 /usr/pgadmin4/bin/*
-/etc/httpd/conf.d/*
+%config(noreplace) /etc/httpd/conf.d/*
 EOF
 
 mkdir -p "${WEBROOT}/etc/httpd/conf.d"
@@ -217,7 +216,7 @@ if [ ${OS_VERSION} == 7 ]; then
 fi
 
 # Get the libpq we need
-yumdownloader --downloadonly --destdir=$DISTROOT postgresql13-libs
+yumdownloader -y --downloadonly --destdir=$DISTROOT postgresql13-libs
 
 #
 # Get the results!

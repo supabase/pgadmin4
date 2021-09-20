@@ -6,8 +6,7 @@
 set -e -E
 
 # Debugging shizz
-trap 'last_command=$current_command; current_command=$BASH_COMMAND' DEBUG
-trap 'if [ $? -ne 0 ]; then echo "\"${last_command}\" command filed with exit code $?."; fi' EXIT
+trap 'ERRCODE=$? && if [ ${ERRCODE} -ne 0 ]; then echo "The command \"${BASH_COMMAND}\" failed in \"${FUNCNAME}\" with exit code ${ERRCODE}."; fi' EXIT
 
 SCRIPT_DIR=$(cd `dirname $0` && pwd)
 SOURCE_DIR=$(realpath ${SCRIPT_DIR}/../..)
@@ -47,8 +46,8 @@ if [ "x${PGADMIN_POSTGRES_DIR}" == "x" ]; then
 fi
 
 if [ "x${PGADMIN_PYTHON_VERSION}" == "x" ]; then
-    echo "PGADMIN_PYTHON_VERSION not set. Setting it to the default: 3.9.2"
-    export PGADMIN_PYTHON_VERSION=3.9.2
+    echo "PGADMIN_PYTHON_VERSION not set. Setting it to the default: 3.9.5"
+    export PGADMIN_PYTHON_VERSION=3.9.5
 fi
 
 source ${SCRIPT_DIR}/build-functions.sh

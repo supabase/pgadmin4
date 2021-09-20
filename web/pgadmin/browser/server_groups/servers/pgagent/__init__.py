@@ -53,9 +53,6 @@ class JobModule(CollectionNodeModule):
 
         conn = manager.connection()
 
-        if manager.server_type == 'gpdb':
-            return False
-
         status, res = conn.execute_scalar("""
 SELECT
     has_table_privilege(
@@ -258,6 +255,24 @@ SELECT EXISTS(
             )
             if not status:
                 return internal_server_error(errormsg=rset)
+
+            # Create jscexceptions in the correct format that React control
+            # required.
+            for schedule in rset['rows']:
+                if 'jexid' in schedule and schedule['jexid'] is not None \
+                        and len(schedule['jexid']) > 0:
+                    schedule['jscexceptions'] = []
+                    index = 0
+                    for exid in schedule['jexid']:
+                        schedule['jscexceptions'].append(
+                            {'jexid': exid,
+                             'jexdate': schedule['jexdate'][index],
+                             'jextime': schedule['jextime'][index]
+                             }
+                        )
+
+                        index += 1
+
             res['jschedules'] = rset['rows']
         else:
             res = rset['rows']

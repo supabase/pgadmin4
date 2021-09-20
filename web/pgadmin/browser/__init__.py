@@ -31,8 +31,9 @@ from flask_security.recoverable import reset_password_token_status, \
     generate_reset_password_token, update_password
 from flask_security.signals import reset_password_instructions_sent
 from flask_security.utils import config_value, do_flash, get_url, \
-    get_message, slash_url_suffix, login_user, send_mail, logout_user
-from flask_security.views import _security, _commit, _ctx
+    get_message, slash_url_suffix, login_user, send_mail, logout_user, \
+    get_post_logout_redirect
+from flask_security.views import _security, view_commit, _ctx
 from werkzeug.datastructures import MultiDict
 
 import config
@@ -50,7 +51,8 @@ from pgadmin.utils.master_password import validate_master_password, \
     set_crypt_key, process_masterpass_disabled
 from pgadmin.model import User
 from pgadmin.utils.constants import MIMETYPE_APP_JS, PGADMIN_NODE,\
-    INTERNAL, KERBEROS
+    INTERNAL, KERBEROS, LDAP, QT_DEFAULT_PLACEHOLDER, OAUTH2
+from pgadmin.authenticate import AuthSourceManager
 
 try:
     from flask_security.views import default_render_json
@@ -197,7 +199,8 @@ class BrowserModule(PgAdminModule):
         for name, script in [
             [PGADMIN_BROWSER, 'js/browser'],
             ['pgadmin.browser.endpoints', 'js/endpoints'],
-            ['pgadmin.browser.error', 'js/error']
+            ['pgadmin.browser.error', 'js/error'],
+            ['pgadmin.browser.constants', 'js/constants']
         ]:
             scripts.append({
                 'name': name,
@@ -341,6 +344,7 @@ class BrowserModule(PgAdminModule):
             list: a list of url endpoints exposed to the client.
         """
         return [BROWSER_INDEX, 'browser.nodes',
+                'browser.check_corrupted_db_file',
                 'browser.check_master_password',
                 'browser.set_master_password',
                 'browser.reset_master_password',
@@ -604,14 +608,8 @@ class BrowserPluginModule(PgAdminModule):
 
 
 def _get_logout_url():
-    if config.SERVER_MODE and\
-            session['_auth_source_manager_obj']['current_source'] == \
-            KERBEROS:
-        return '{0}?next={1}'.format(url_for(
-            'authenticate.kerberos_logout'), url_for(BROWSER_INDEX))
-
     return '{0}?next={1}'.format(
-        url_for('security.logout'), url_for(BROWSER_INDEX))
+        url_for(current_app.login_manager.logout_view), url_for(BROWSER_INDEX))
 
 
 def _get_supported_browser():
@@ -745,10 +743,10 @@ def index():
         if len(config.AUTHENTICATION_SOURCES) == 1\
                 and INTERNAL in config.AUTHENTICATION_SOURCES:
             auth_only_internal = True
-        auth_source = session['_auth_source_manager_obj'][
+        auth_source = session['auth_source_manager'][
             'source_friendly_name']
 
-        if session['_auth_source_manager_obj']['current_source'] == KERBEROS:
+        if not config.MASTER_PASSWORD_REQUIRED and 'pass_enc_key' in session:
             session['allow_save_password'] = False
 
     response = Response(render_template(
@@ -850,7 +848,10 @@ def utils():
             app_version_int=config.APP_VERSION_INT,
             pg_libpq_version=pg_libpq_version,
             support_ssh_tunnel=config.SUPPORT_SSH_TUNNEL,
-            logout_url=_get_logout_url()
+            logout_url=_get_logout_url(),
+            platform=sys.platform,
+            qt_default_placeholder=QT_DEFAULT_PLACEHOLDER,
+            enable_psql=config.ENABLE_PSQL
         ),
         200, {'Content-Type': MIMETYPE_APP_JS})
 
@@ -860,6 +861,19 @@ def utils():
 def exposed_urls():
     return make_response(
         render_template('browser/js/endpoints.js'),
+        200, {'Content-Type': MIMETYPE_APP_JS}
+    )
+
+
+@blueprint.route("/js/constants.js")
+@pgCSRFProtect.exempt
+def app_constants():
+    return make_response(
+        render_template('browser/js/constants.js',
+                        INTERNAL=INTERNAL,
+                        LDAP=LDAP,
+                        KERBEROS=KERBEROS,
+                        OAUTH2=OAUTH2),
         200, {'Content-Type': MIMETYPE_APP_JS}
     )
 
@@ -936,6 +950,19 @@ def form_master_password_response(existing=True, present=False, errmsg=None):
     })
 
 
+@blueprint.route("/check_corrupted_db_file",
+                 endpoint="check_corrupted_db_file", methods=["GET"])
+def check_corrupted_db_file():
+    """
+    Get the corrupted database file path.
+    """
+    file_location = os.environ['CORRUPTED_DB_BACKUP_FILE'] \
+        if 'CORRUPTED_DB_BACKUP_FILE' in os.environ else ''
+    # reset the corrupted db file path in env.
+    os.environ['CORRUPTED_DB_BACKUP_FILE'] = ''
+    return make_json_response(data=file_location)
+
+
 @blueprint.route("/master_password", endpoint="check_master_password",
                  methods=["GET"])
 def check_master_password():
@@ -974,8 +1001,10 @@ def set_master_password():
         data = json.loads(data)
 
     # Master password is not applicable for server mode
-    if not config.SERVER_MODE and config.MASTER_PASSWORD_REQUIRED:
-
+    # Enable master password if oauth is used
+    if not config.SERVER_MODE or OAUTH2 in config.AUTHENTICATION_SOURCES \
+        or KERBEROS in config.AUTHENTICATION_SOURCES \
+            and config.MASTER_PASSWORD_REQUIRED:
         # if master pass is set previously
         if current_user.masterpass_check is not None and \
             data.get('button_click') and \
@@ -1012,7 +1041,7 @@ def set_master_password():
                 existing=True,
                 present=False,
             )
-        elif not get_crypt_key()[0]:
+        elif not get_crypt_key()[1]:
             error_message = None
             if data.get('button_click') and data.get('password') == '':
                 # If user attempted to enter a blank password, then throw error
@@ -1104,7 +1133,8 @@ if hasattr(config, 'SECURITY_CHANGEABLE') and config.SECURITY_CHANGEABLE:
 
         if form.validate_on_submit():
             try:
-                change_user_password(current_user, form.new_password.data)
+                change_user_password(current_user._get_current_object(),
+                                     form.new_password.data)
             except SOCKETErrorException as e:
                 # Handle socket errors which are not covered by SMTPExceptions.
                 logging.exception(str(e), exc_info=True)
@@ -1130,7 +1160,7 @@ if hasattr(config, 'SECURITY_CHANGEABLE') and config.SECURITY_CHANGEABLE:
                 has_error = True
 
             if request.json is None and not has_error:
-                after_this_request(_commit)
+                after_this_request(view_commit)
                 do_flash(*get_message('PASSWORD_CHANGE'))
 
                 old_key = get_crypt_key()[1]
@@ -1296,9 +1326,21 @@ if hasattr(config, 'SECURITY_RECOVERABLE') and config.SECURITY_RECOVERABLE:
                 has_error = True
 
             if not has_error:
-                after_this_request(_commit)
+                after_this_request(view_commit)
+                auth_obj = AuthSourceManager(form, [INTERNAL])
+                session['_auth_source_manager_obj'] = auth_obj.as_dict()
+
+                if user.login_attempts >= config.MAX_LOGIN_ATTEMPTS > 0:
+                    flash(gettext('You successfully reset your password but'
+                                  ' your account is locked. Please contact '
+                                  'the Administrator.'),
+                          'warning')
+                    return redirect(get_post_logout_redirect())
                 do_flash(*get_message('PASSWORD_RESET'))
                 login_user(user)
+                auth_obj = AuthSourceManager(form, [INTERNAL])
+                session['auth_source_manager'] = auth_obj.as_dict()
+
                 return redirect(get_url(_security.post_reset_view) or
                                 get_url(_security.post_login_view))
 

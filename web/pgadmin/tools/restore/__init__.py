@@ -18,11 +18,11 @@ from flask_babelex import gettext as _
 from flask_security import login_required, current_user
 from pgadmin.misc.bgprocess.processes import BatchProcess, IProcessDesc
 from pgadmin.utils import PgAdminModule, get_storage_directory, html, \
-    fs_short_path, document_dir, does_utility_exist
+    fs_short_path, document_dir, does_utility_exist, get_server
 from pgadmin.utils.ajax import make_json_response, bad_request
 
 from config import PG_DEFAULT_DRIVER
-from pgadmin.model import Server
+from pgadmin.model import Server, SharedServer
 from pgadmin.utils.constants import MIMETYPE_APP_JS
 
 # set template path for sql scripts
@@ -87,10 +87,9 @@ class RestoreMessage(IProcessDesc):
                 self.cmd += cmd_arg(arg)
 
     def get_server_details(self):
+
         # Fetch the server details like hostname, port, roles etc
-        s = Server.query.filter_by(
-            id=self.sid, user_id=current_user.id
-        ).first()
+        s = get_server(self.sid)
 
         from pgadmin.utils.driver import get_driver
         driver = get_driver(PG_DEFAULT_DRIVER)
@@ -209,10 +208,7 @@ def _connect_server(sid):
     :param sid: Server ID.
     :return: if not error occurred then return connection data.
     """
-    # Fetch the server details like hostname, port, roles etc
-    server = Server.query.filter_by(
-        id=sid
-    ).first()
+    server = get_server(sid)
 
     if server is None:
         return make_json_response(
@@ -420,7 +416,7 @@ def create_restore_job(sid):
     try:
         p = BatchProcess(
             desc=RestoreMessage(
-                sid,
+                server.id,
                 data['file'].encode('utf-8') if hasattr(
                     data['file'], 'encode'
                 ) else data['file'],
@@ -466,9 +462,8 @@ def check_utility_exists(sid):
     Returns:
         None
     """
-    server = Server.query.filter_by(
-        id=sid, user_id=current_user.id
-    ).first()
+    # Fetch the server details like hostname, port, roles etc
+    server = get_server(sid)
 
     if server is None:
         return make_json_response(

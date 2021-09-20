@@ -7,6 +7,8 @@
 //
 //////////////////////////////////////////////////////////////
 
+import {removeNodeView} from './node_view';
+
 define([
   'sources/gettext', 'jquery', 'underscore', 'sources/pgadmin',
   'backbone', 'alertify', 'backform', 'backgrid', 'sources/browser/generate_url',
@@ -64,6 +66,16 @@ define([
               priority: 997, label: gettext('Search Objects...'),
               icon: 'fa fa-search',
             }]);
+
+            // show psql tool same as query tool.
+            if(pgAdmin['enable_psql']) {
+              pgAdmin.Browser.add_menus([{
+                name: 'show_psql_tool', node: this.type, module: this,
+                applies: ['context'], callback: 'show_psql_tool',
+                priority: 998, label: gettext('PSQL Tool (Beta)'),
+                icon: 'fas fa-terminal',
+              }]);
+            }
           }
         }
       },
@@ -76,6 +88,7 @@ define([
       hasCollectiveStatistics: true,
       canDrop: true,
       canDropCascade: true,
+      selectParentNodeOnDelete: false,
       showProperties: function(item, data, panel) {
         var that = this,
           j = panel.$container.find('.obj_properties').first(),
@@ -228,6 +241,8 @@ define([
           j.data('obj-view', null);
         }
 
+        /* Remove any dom rendered by getNodeView */
+        removeNodeView(j[0]);
         // Make sure the HTML element is empty.
         j.empty();
         j.data('obj-view', gridView);
@@ -497,6 +512,13 @@ define([
         if(pgAdmin.SearchObjects) {
           pgAdmin.SearchObjects.show_search_objects('', pgAdmin.Browser.tree.selected());
         }
+      },
+      show_psql_tool: function(args) {
+        var input = args || {},
+          t = pgBrowser.tree,
+          i = input.item || t.selected(),
+          d = i && i.length == 1 ? t.itemData(i) : undefined;
+        pgBrowser.psql.psql_tool(d, i, true);
       },
     });
 

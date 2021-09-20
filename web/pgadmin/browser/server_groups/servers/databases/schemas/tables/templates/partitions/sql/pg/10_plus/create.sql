@@ -4,7 +4,7 @@
 {#===========================================#}
 {### CREATE TABLE STATEMENT FOR partitions ###}
 
-CREATE {% if data.relpersistence %}UNLOGGED {% endif %}TABLE {{conn|qtIdent(data.schema, data.name)}}{% if data.relispartition is defined and data.relispartition %} PARTITION OF {{conn|qtIdent(data.parent_schema, data.partitioned_table_name)}}{% endif %}
+CREATE {% if data.relpersistence %}UNLOGGED {% endif %}TABLE IF NOT EXISTS {{conn|qtIdent(data.schema, data.name)}}{% if data.relispartition is defined and data.relispartition %} PARTITION OF {{conn|qtIdent(data.parent_schema, data.partitioned_table_name)}}{% endif %}
 
 {# Macro to render for constraints #}
 {% if data.primary_key|length > 0 or data.unique_constraint|length > 0 or data.foreign_key|length > 0 or data.check_constraint|length > 0 or data.exclude_constraint|length > 0 %}
@@ -57,7 +57,7 @@ TABLESPACE {{ conn|qtIdent(data.spcname) }};
 {### Alter SQL for Owner ###}
 {% if data.relowner %}
 
-ALTER TABLE {{conn|qtIdent(data.schema, data.name)}}
+ALTER TABLE IF EXISTS {{conn|qtIdent(data.schema, data.name)}}
     OWNER to {{conn|qtIdent(data.relowner)}};
 {% endif %}
 {### SQL for COMMENT ###}

@@ -57,7 +57,6 @@ class RowSecurityModule(CollectionNodeModule):
 
     def __init__(self, *args, **kwargs):
         super(RowSecurityModule, self).__init__(*args, **kwargs)
-        self.min_gpdbver = 1000000000
         self.min_ver = 90500
         self.max_ver = None
 
@@ -379,7 +378,7 @@ class RowSecurityView(PGChildNodeView):
             if not status:
                 return internal_server_error(errormsg=res)
 
-            # we need oid to to add object in tree at browser
+            # we need oid to add object in tree at browser
             sql = render_template(
                 "/".join([self.template_path, 'get_position.sql']),
                 tid=tid, data=data

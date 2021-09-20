@@ -10,11 +10,11 @@
 define([
   'sources/gettext', 'sources/url_for', 'jquery', 'underscore', 'pgadmin.alertifyjs',
   'pgadmin.browser', 'backbone', 'backgrid', 'backform', 'pgadmin.browser.node', 'pgadmin.backform',
-  'pgadmin.user_management.current_user', 'sources/utils',
+  'pgadmin.user_management.current_user', 'sources/utils', 'pgadmin.browser.constants',
   'backgrid.select.all', 'backgrid.filter',
 ], function(
   gettext, url_for, $, _, alertify, pgBrowser, Backbone, Backgrid, Backform,
-  pgNode, pgBackform, userInfo, commonUtils,
+  pgNode, pgBackform, userInfo, commonUtils, pgConst,
 ) {
 
   // if module is already initialized, refer to that.
@@ -25,7 +25,10 @@ define([
   var USERURL = url_for('user_management.users'),
     ROLEURL = url_for('user_management.roles'),
     SOURCEURL = url_for('user_management.auth_sources'),
-    DEFAULT_AUTH_SOURCE = 'internal',
+    DEFAULT_AUTH_SOURCE = pgConst['INTERNAL'],
+    LDAP = pgConst['LDAP'],
+    KERBEROS = pgConst['KERBEROS'],
+    OAUTH2 = pgConst['OAUTH2'],
     AUTH_ONLY_INTERNAL = (userInfo['auth_sources'].length  == 1 && userInfo['auth_sources'].includes(DEFAULT_AUTH_SOURCE)) ? true : false,
     userFilter = function(collection) {
       return (new Backgrid.Extension.ClientSideFilter({
@@ -433,6 +436,16 @@ define([
             editable: function(m) {
               return (m.get('auth_source') == DEFAULT_AUTH_SOURCE);
             },
+          },{
+            id: 'locked',
+            label: gettext('Locked'),
+            type: 'switch',
+            cell: 'switch',
+            disabled: false,
+            sortable: false,
+            editable: function (m){
+              return (m.get('id') != userInfo['id']);
+            },
           }],
           validate: function() {
             var errmsg = null,
@@ -589,7 +602,27 @@ define([
               }
             } else {
               if (!!this.get('username') && this.collection.nonFilter.where({
-                'username': this.get('username'), 'auth_source': 'ldap',
+                'username': this.get('username'), 'auth_source': LDAP,
+              }).length > 1) {
+                errmsg = gettext('The username %s already exists.',
+                  this.get('username')
+                );
+
+                this.errorModel.set('username', errmsg);
+                return errmsg;
+              }
+              else if (!!this.get('username') && this.collection.nonFilter.where({
+                'username': this.get('username'), 'auth_source': KERBEROS,
+              }).length > 1) {
+                errmsg = gettext('The username %s already exists.',
+                  this.get('username')
+                );
+
+                this.errorModel.set('username', errmsg);
+                return errmsg;
+              }
+              else if (!!this.get('username') && this.collection.nonFilter.where({
+                'username': this.get('username'), 'auth_source': OAUTH2,
               }).length > 1) {
                 errmsg = gettext('The username %s already exists.',
                   this.get('username')
@@ -1041,7 +1074,7 @@ define([
                   saveUser: function(m) {
                     var d = m.toJSON(true);
 
-                    if((m.isNew() && m.get('auth_source') == 'ldap' && (!m.get('username') || !m.get('auth_source') || !m.get('role')))
+                    if((m.isNew() && (m.get('auth_source') == LDAP || m.get('auth_source') == KERBEROS || m.get('auth_source') == OAUTH2) && (!m.get('username') || !m.get('auth_source') || !m.get('role')))
                       || (m.isNew() && m.get('auth_source') == DEFAULT_AUTH_SOURCE &&  (!m.get('email') || !m.get('role') ||
                           !m.get('newPassword') || !m.get('confirmPassword') || m.get('newPassword') != m.get('confirmPassword')))
                       || (!m.isNew() && m.get('newPassword') != m.get('confirmPassword'))) {
@@ -1229,7 +1262,7 @@ define([
           };
         });
       }
-      alertify.UserManagement(true).resizeTo(pgBrowser.stdW.md, pgBrowser.stdH.md);
+      alertify.UserManagement(true).resizeTo(pgBrowser.stdW.lg, pgBrowser.stdH.md);
     },
 
   };

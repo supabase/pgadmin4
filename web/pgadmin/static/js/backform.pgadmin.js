@@ -1115,6 +1115,99 @@ define([
       };
     };
 
+  Backform.BinaryPathsGridControl = Backform.Control.extend({
+    initialize: function() {
+      Backform.Control.prototype.initialize.apply(this, arguments);
+
+      var BinaryPathModel = Backbone.Model.extend({
+        idAttribute: 'serverType',
+        defaults: {
+          serverType: undefined,
+          binaryPath: undefined,
+          isDefault: false
+        },
+      });
+
+      this.gridColumns = [{
+        name: 'isDefault',
+        label: gettext('Set as default'),
+        sortable: false,
+        cell: Backgrid.RadioCell,
+        cellHeaderClasses: 'width_percent_10',
+        headerCell: Backgrid.Extension.CustomHeaderCell,
+        deps: ['binaryPath'],
+        editable: function(m) {
+          if (!_.isUndefined(m.get('binaryPath')) && !_.isNull(m.get('binaryPath')) && m.get('binaryPath') !== '') {
+            return true;
+          } else if (!_.isUndefined(m.get('isDefault')) && !_.isNull(m.get('isDefault'))){
+            setTimeout(function() {
+              m.set('isDefault', false);
+            }, 10);
+          }
+
+          return false;
+        }
+      }, {
+        name: 'serverType',
+        label: gettext('Database Server'),
+        editable: false,
+        cell: 'string',
+        cellHeaderClasses: 'width_percent_20',
+        headerCell: Backgrid.Extension.CustomHeaderCell,
+      }, {
+        name: 'binaryPath',
+        label: gettext('Binary Path'),
+        sortable: false,
+        cell: Backgrid.Extension.SelectFileCell,
+        dialog_type: 'select_folder',
+        dialog_title: gettext('Select Folder'),
+        placeholder: pgAdmin.server_mode === 'False' ? gettext('Select binary path...') : pgAdmin.enable_binary_path_browsing ? gettext('Select binary path...') : gettext('Enter binary path...'),
+        browse_btn_label: gettext('Select path'),
+        check_btn_label: gettext('Validate utilities'),
+        browse_btn_visible: pgAdmin.server_mode === 'False' ? true : pgAdmin.enable_binary_path_browsing ? true : false
+      }];
+
+      var BinPathCollection = this.BinPathCollection =  new (Backbone.Collection.extend({
+        model: BinaryPathModel
+      }))(null);
+
+      let bin_value = JSON.parse(this.model.get(this.field.get('name')));
+      this.BinPathCollection.add(bin_value);
+      this.listenTo(BinPathCollection, 'change', this.binPathCollectionChanged);
+    },
+
+    render: function() {
+      var self = this,
+        gridHeader = ['<div class=\'subnode-header\'>',
+          '  <span class=\'control-label pg-el-sm-12\'>' + gettext(this.field.get('label')) + '</span>',
+          '</div>',
+        ].join('\n'),
+        gridBody = $('<div class=\'pgadmin-control-group backgrid form-group pg-el-12 object subnode\'></div>').append(gridHeader);
+
+      self.grid = new Backgrid.Grid({
+        columns: self.gridColumns,
+        collection: self.BinPathCollection,
+        className: 'backgrid table presentation table-bordered table-noouter-border table-hover',
+      });
+
+      this.$el.empty();
+      this.$el.append(gridBody.append(self.grid.render().$el));
+      this.$el.append(['<span class="pg-el-sm-12 form-text text-muted help-block">' +
+      gettext('Enter the directory in which the psql, pg_dump, pg_dumpall, and pg_restore' +
+      ' utilities can be found for the corresponding database server version.' +
+      ' The default path will be used for server versions that do not have a' +
+      ' path specified.') + '</span>'].join('\n'));
+
+      return this;
+    },
+    binPathCollectionChanged: function() {
+      let bin_value = JSON.stringify(this.BinPathCollection.toJSON());
+      this.model.set(this.field.get('name'), bin_value, {
+        silent: false
+      });
+    }
+  });
+
   Backform.UniqueColCollectionControl = Backform.Control.extend({
     initialize: function() {
       Backform.Control.prototype.initialize.apply(this, arguments);
@@ -1868,7 +1961,6 @@ define([
             }).done(function(res) {
               self.sqlCtrl.clearHistory();
               self.sqlCtrl.setValue(res.data);
-              self.setCodeMirrorHeight(obj);
             }).fail(function() {
               self.model.trigger('pgadmin-view:msql:error', self.method, node, arguments);
             }).always(function() {
@@ -1884,7 +1976,6 @@ define([
         }
         this.sqlCtrl.refresh.apply(this.sqlCtrl);
       }
-      this.setCodeMirrorHeight(obj);
     },
     onPanelResized: function(o) {
       if (o && o.container) {
@@ -1900,7 +1991,6 @@ define([
             'height: ' + ($tabContent.height() + 8) + 'px !important;'
           );
         }
-        this.sqlCtrl.setSize($tabContent.width() + 'px', $tabContent.height() + 'px');
       }
     },
     remove: function() {
@@ -1916,26 +2006,6 @@ define([
 
       Backform.Control.__super__.remove.apply(this, arguments);
     },
-    setCodeMirrorHeight: function(obj) {
-      // Fix for mac os code-mirror showing black screen.
-      var txtArea = $('.pgadmin-controls .pg-el-sm-12 .SQL > .CodeMirror > div > textarea').first();
-      txtArea.css('z-index', -1);
-      var $tabContent = $('.backform-tab > .tab-content').first();
-      var $sqlPane = $tabContent.find('.CodeMirror > div > textarea');
-      for(let i=0; i<$sqlPane.length; i++) {$($sqlPane[i]).css('z-index', -1);}
-
-      $tabContent = $('.backform-tab > .tab-content').first();
-      $sqlPane = $tabContent.find('div[role=tabpanel].tab-pane.' + obj.tab.innerText);
-      // Set height to CodeMirror.
-      if ($sqlPane.hasClass('active')) {
-        $sqlPane.find('.CodeMirror').css(
-          'cssText',
-          'height: ' + ($tabContent.height()) + 'px !important;'
-        );
-        $sqlPane.find('.CodeMirror').css('z-index', 99);
-      }
-    }
-
   });
   /*
    * Numeric input Control functionality just like backgrid
@@ -2632,16 +2702,49 @@ define([
       // refresh the code mirror object on 'pg-property-tab-changed' event to
       // make it work properly.
       self.model.on('pg-property-tab-changed', this.refreshTextArea, this);
-
+      this.sqlCtrl.setOption('dragDrop', true);
       this.sqlCtrl.on('focus', this.onFocus);
       this.sqlCtrl.on('blur', this.onBlur);
-
+      this.sqlCtrl.on('drop', this.onDrop);
       // Refresh SQL Field to refresh the control lazily after it renders
       setTimeout(function() {
         self.refreshTextArea.apply(self);
       }, 0);
 
       return self;
+    },
+
+    onDrop: function(editor, e){
+      var dropDetails = null;
+      try {
+        dropDetails = JSON.parse(e.dataTransfer.getData('text'));
+
+        /* Stop firefox from redirecting */
+
+        if(e.preventDefault) {
+          e.preventDefault();
+        }
+        if (e.stopPropagation) {
+          e.stopPropagation();
+        }
+      } catch(error) {
+        /* if parsing fails, it must be the drag internal of codemirror text */
+        return;
+      }
+
+      var cursor = editor.coordsChar({
+        left: e.x,
+        top: e.y,
+      });
+      editor.replaceRange(dropDetails.text, cursor);
+      editor.focus();
+      editor.setSelection({
+        ...cursor,
+        ch: cursor.ch + dropDetails.cur.from,
+      },{
+        ...cursor,
+        ch: cursor.ch +dropDetails.cur.to,
+      });
     },
 
     onFocus: function() {
@@ -3000,6 +3103,11 @@ define([
           evalF = function(f, m) {
             return (_.isFunction(f) ? !!f(m) : !!f);
           };
+
+        // disable when mode is properties.
+        if(data.mode == 'properties') {
+          data.disabled = true;
+        }
 
         // Evaluate the disabled, visible, and required option
         _.extend(data, {
@@ -3474,6 +3582,62 @@ define([
         return;
       this.$el.find('input[type=checkbox]').trigger('click');
     },
+  });
+
+  Backform.ThresholdControl = Backform.Control.extend({
+    template: _.template([
+      '<label class="<%=Backform.controlLabelClassName%>"><%=label%></label>',
+      '<div class="<%=Backform.controlContainerClassName%>">',
+      '  <span class="control-label pg-el-sm-2 pg-el-12"><%=warning_label%></span>',
+      '  <input type="text" id="warning_threshold" class="pg-el-sm-2" value="<%=warning_value%>" />',
+      '  <span class="control-label pg-el-sm-1 pg-el-12"><%=alert_label%></span>',
+      '  <input type="text" id="alert_threshold" class="pg-el-sm-2" value="<%=alert_value%>" />',
+      '  <span class="control-label pg-el-sm-3 pg-el-12"><%=unit%></span>',
+      '  <% if (helpMessage && helpMessage.length) { %>',
+      '    <span class="<%=Backform.helpMessageClassName%>"><%=helpMessage%></span>',
+      '  <% } %>',
+      '</div>',
+    ].join('\n')),
+
+    events: {
+      'change input#warning_threshold': 'onChange',
+      'change input#alert_threshold': 'onChange',
+    },
+    initialize: function() {
+      Backform.Control.prototype.initialize.apply(this, arguments);
+    },
+
+    render: function() {
+      var field = _.defaults(this.field.toJSON(), this.defaults),
+        attributes = this.model.toJSON(),
+        threshold_val = [];
+
+      if (!_.isUndefined(this.model.get('value')) && !_.isNull(this.model.get('value'))){
+        threshold_val = this.model.get('value').split('|');
+      }
+
+      var data = _.extend(field, {
+        attributes: attributes,
+        'warning_value': threshold_val.length > 0 ? threshold_val[0] : '',
+        'alert_value': threshold_val.length > 1 ? threshold_val[1] : ''
+      });
+
+      this.$el.html(this.template(data));
+
+      return this;
+    },
+
+    onChange: function() {
+      // Get the value from raw jquery and concat it using |
+      // and set the value
+      var warning_threshold = $('input#warning_threshold').val(),
+        alert_threshold = $('input#alert_threshold').val();
+
+      var threshold_val = warning_threshold + '|' + alert_threshold;
+      this.model.set(this.field.get('name'), threshold_val, {
+        silent: false
+      });
+    }
   });
 
   return Backform;

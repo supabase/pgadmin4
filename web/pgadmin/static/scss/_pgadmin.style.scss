@@ -264,6 +264,7 @@
 
 .obj_properties {
     padding: 0px;
+    height: 100%;
 }
 
 .obj_properties .pgadmin-control .uneditable-input {
@@ -944,6 +945,9 @@ table.table-empty-rows{
     padding-bottom: 0.8rem;
   }
   & .btn-login {
+    background-color: $security-btn-color;
+  }
+  & .btn-oauth {
     background-color: $security-btn-color;
   }
   & .user-language {

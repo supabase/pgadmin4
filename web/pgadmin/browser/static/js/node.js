@@ -7,6 +7,8 @@
 //
 //////////////////////////////////////////////////////////////
 
+import {getNodeView, removeNodeView} from './node_view';
+
 define('pgadmin.browser.node', [
   'sources/tree/pgadmin_tree_node', 'sources/url_for',
   'sources/gettext', 'jquery', 'underscore', 'sources/pgadmin',
@@ -209,6 +211,16 @@ define('pgadmin.browser.node', [
           priority: 997, label: gettext('Search Objects...'),
           icon: 'fa fa-search', enable: enable,
         }]);
+
+        if(pgAdmin['enable_psql']) {
+          // show psql tool same as query tool.
+          pgAdmin.Browser.add_menus([{
+            name: 'show_psql_tool', node: this.type, module: this,
+            applies: ['context'], callback: 'show_psql_tool',
+            priority: 998, label: gettext('PSQL Tool (Beta)'),
+            icon: 'fas fa-terminal',
+          }]);
+        }
       }
 
       // This will add options of scripts eg:'CREATE Script'
@@ -514,6 +526,7 @@ define('pgadmin.browser.node', [
         isCloseable: true,
         isPrivate: true,
         isLayoutMember: false,
+        canMaximise: true,
         elContainer: true,
         content: '<div class="obj_properties container-fluid"><div role="status" class="pg-panel-message">' + gettext('Please wait while we fetch information about the node from the server...') + '</div></div>',
         onCreate: function(myPanel, $container) {
@@ -558,6 +571,10 @@ define('pgadmin.browser.node', [
     dropPriority is set to 2 by default, override it when change is required
     */
     dropPriority: 2,
+    /******************************************************************************
+    select collection node on deletion.
+    */
+    selectParentNodeOnDelete: false,
     // List of common callbacks - that can be used for different
     // operations!
     callbacks: {
@@ -824,7 +841,16 @@ define('pgadmin.browser.node', [
                 if (res.success == 0) {
                   pgBrowser.report_error(res.errormsg, res.info);
                 } else {
-                  pgBrowser.removeTreeNode(i, true);
+                  // Remove the node from tree and set collection node as selected.
+                  var selectNextNode = true;
+                  if(obj.selectParentNodeOnDelete) {
+                    var prv_i = t.parent(i);
+                    setTimeout(function() {
+                      t.select(prv_i);
+                    }, 10);
+                    selectNextNode = false;
+                  }
+                  pgBrowser.removeTreeNode(i, selectNextNode);
                 }
                 return true;
               })
@@ -891,6 +917,7 @@ define('pgadmin.browser.node', [
 
       // Callback to render query editor
       show_query_tool: function(args, item) {
+        var preference = pgBrowser.get_preference('sqleditor', 'copy_sql_to_query_tool');
         var t = pgBrowser.tree,
           i = item || t.selected(),
           d = i && i.length == 1 ? t.itemData(i) : undefined;
@@ -899,7 +926,26 @@ define('pgadmin.browser.node', [
           return;
 
         // Here call data grid method to render query tool
-        pgAdmin.DataGrid.show_query_tool('', i);
+        //Open query tool with create script if copy_sql_to_query_tool is true else open blank query tool
+        if(preference.value && !d._type.includes('coll-')){
+          var stype = d._type.toLowerCase();
+          var data = {
+            'script': stype,
+            data_disabled: gettext('The selected tree node does not support this option.'),
+          };
+          pgBrowser.Node.callbacks.show_script(data);
+        }else{
+          pgAdmin.DataGrid.show_query_tool('', i);
+        }
+      },
+
+      // Callback to render psql tool.
+      show_psql_tool: function(args) {
+        var input = args || {},
+          t = pgBrowser.tree,
+          i = input.item || t.selected(),
+          d = i && i.length == 1 ? t.itemData(i) : undefined;
+        pgBrowser.psql.psql_tool(d, i, true);
       },
 
       // Logic to change the server background colour
@@ -929,7 +975,7 @@ define('pgadmin.browser.node', [
             style_tag += ' background: ' + bgcolor + '} \n';
             if (fgcolor) {
               style_tag += '.' + dynamic_class + ' .aciTreeText {';
-              style_tag += ' color: ' + fgcolor + ';} \n';
+              style_tag += ' color: ' + fgcolor + ' !important;} \n';
             }
             style_tag += '</style>';
 
@@ -1196,6 +1242,17 @@ define('pgadmin.browser.node', [
           // Cache the current IDs for next time
           $(this).data('node-prop', treeHierarchy);
 
+          /* Remove any dom rendered by getNodeView */
+          removeNodeView(j[0]);
+          /* getSchema is a schema for React. Get the react node view */
+          if(that.getSchema) {
+            let treeNodeInfo = that.getTreeNodeHierarchy.apply(this, [item]);
+            getNodeView(
+              that.type, treeNodeInfo, 'properties', data, 'tab', j[0], this, onEdit
+            );
+            return;
+          }
+
           if (!content.hasClass('has-pg-prop-btn-group'))
             content.addClass('has-pg-prop-btn-group');
 
@@ -1440,6 +1497,46 @@ define('pgadmin.browser.node', [
             action = 'edit';
           }
           self.$container.attr('action-mode', action);
+
+          self.icon(
+            _.isFunction(that['node_image']) ?
+              (that['node_image']).apply(that, [data]) :
+              (that['node_image'] || ('icon-' + that.type))
+          );
+          /* Remove any dom rendered by getNodeView */
+          removeNodeView(j[0]);
+          /* getSchema is a schema for React. Get the react node view */
+          if(that.getSchema) {
+            let treeNodeInfo = that.getTreeNodeHierarchy.apply(this, [item]);
+            getNodeView(
+              that.type, treeNodeInfo, action, data, 'dialog', j[0], this, onEdit,
+              (nodeData)=>{
+                if(nodeData.node) {
+                  onSaveFunc(nodeData.node, treeNodeInfo);
+                  // Removing the node-prop property of panel
+                  // so that we show updated data on panel
+                  var pnlProperties = pgBrowser.docker.findPanels('properties')[0],
+                    pnlSql = pgBrowser.docker.findPanels('sql')[0],
+                    pnlStats = pgBrowser.docker.findPanels('statistics')[0],
+                    pnlDependencies = pgBrowser.docker.findPanels('dependencies')[0],
+                    pnlDependents = pgBrowser.docker.findPanels('dependents')[0];
+
+                  if (pnlProperties)
+                    $(pnlProperties).removeData('node-prop');
+                  if (pnlSql)
+                    $(pnlSql).removeData('node-prop');
+                  if (pnlStats)
+                    $(pnlStats).removeData('node-prop');
+                  if (pnlDependencies)
+                    $(pnlDependencies).removeData('node-prop');
+                  if (pnlDependents)
+                    $(pnlDependents).removeData('node-prop');
+                }
+              }
+            );
+            return;
+          }
+
           // We need to release any existing view, before
           // creating the new view.
           if (view) {
@@ -1634,10 +1731,10 @@ define('pgadmin.browser.node', [
           // Closing this panel
           this.close();
         }.bind(panel),
-        updateTreeItem = function(obj) {
+        updateTreeItem = function(obj, tnode, node_info) {
           var _old = data,
-            _new = _.clone(view.model.tnode),
-            info = _.clone(view.model.node_info);
+            _new = tnode || _.clone(view.model.tnode),
+            info = node_info || _.clone(view.model.node_info);
 
           // Clear the cache for this node now.
           setTimeout(function() {
@@ -1661,7 +1758,7 @@ define('pgadmin.browser.node', [
           );
           closePanel(false);
         },
-        saveNewNode = function(obj) {
+        saveNewNode = function(obj, tnode, node_info) {
           var $props = this.$container.find('.obj_properties').first(),
             objview = $props.data('obj-view');
 
@@ -1671,8 +1768,8 @@ define('pgadmin.browser.node', [
           }, 0);
           try {
             pgBrowser.Events.trigger(
-              'pgadmin:browser:tree:add', _.clone(objview.model.tnode),
-              _.clone(objview.model.node_info)
+              'pgadmin:browser:tree:add', _.clone(tnode || objview.model.tnode),
+              _.clone(node_info || objview.model.node_info)
             );
           } catch (e) {
             console.warn(e.stack || e);
@@ -1704,10 +1801,10 @@ define('pgadmin.browser.node', [
         }
       } else {
         /* Show properties */
-        properties();
         onEdit = editInNewPanel.bind(panel);
+        properties();
       }
-      if (panel.closeable()) {
+      if (panel.closeable() && !that.getSchema) {
         panel.on(wcDocker.EVENT.CLOSING, warnBeforeChangesLost.bind(
           panel,
           gettext('Changes will be lost. Are you sure you want to close the dialog?'),
@@ -1786,7 +1883,6 @@ define('pgadmin.browser.node', [
         },
         self = this,
         priority = -Infinity;
-
       var treeInfo = (_.isUndefined(item) || _.isNull(item)) ?
         info || {} : this.getTreeNodeHierarchy(item);
       var actionType = type in opURL ? opURL[type] : type;

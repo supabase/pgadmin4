@@ -18,19 +18,9 @@ let _browserPanel = null;
 // Default Tool Bar Buttons.
 let _defaultToolBarButtons = [
   {
-    label: gettext('Query Tool'),
-    ariaLabel: gettext('Query Tool'),
-    btnClass: 'pg-font-icon icon-query_tool',
-    text: '',
-    toggled: false,
-    toggleClass: '',
-    parentClass: 'pg-toolbar-btn btn-primary-icon',
-    enabled: false,
-  },
-  {
-    label: gettext('View Data'),
-    ariaLabel: gettext('View Data'),
-    btnClass: 'pg-font-icon sql-icon-lg icon-view_data',
+    label: gettext('Search objects'),
+    ariaLabel: gettext('Search objects'),
+    btnClass: 'fa fa-search',
     text: '',
     toggled: false,
     toggleClass: '',
@@ -48,16 +38,40 @@ let _defaultToolBarButtons = [
     enabled: false,
   },
   {
-    label: gettext('Search objects'),
-    ariaLabel: gettext('Search objects'),
-    btnClass: 'fa fa-search',
+    label: gettext('View Data'),
+    ariaLabel: gettext('View Data'),
+    btnClass: 'pg-font-icon sql-icon-lg icon-view_data',
     text: '',
     toggled: false,
     toggleClass: '',
     parentClass: 'pg-toolbar-btn btn-primary-icon',
     enabled: false,
   },
+  {
+    label: gettext('Query Tool'),
+    ariaLabel: gettext('Query Tool'),
+    btnClass: 'pg-font-icon icon-query_tool',
+    text: '',
+    toggled: false,
+    toggleClass: '',
+    parentClass: 'pg-toolbar-btn btn-primary-icon',
+    enabled: false,
+  }
 ];
+
+if(pgAdmin['enable_psql']) {
+  _defaultToolBarButtons.unshift({
+    label: gettext('PSQL Tool'),
+    ariaLabel: gettext('PSQL Tool'),
+    btnClass: 'fas fa-terminal',
+    text: '',
+    toggled: false,
+    toggleClass: '',
+    parentClass: 'pg-toolbar-btn btn-primary-icon pg-toolbar-psql',
+    enabled: false,
+  });
+}
+
 
 // Place holder for non default tool bar buttons.
 let _otherToolbarButtons = [];
@@ -105,6 +119,13 @@ export function initializeToolbar(panel, wcDocker) {
       pgAdmin.DataGrid.show_filtered_row({mnuid: 4}, pgAdmin.Browser.tree.selected());
     else if ('name' in data && data.name === gettext('Search objects'))
       pgAdmin.SearchObjects.show_search_objects('', pgAdmin.Browser.tree.selected());
+    else if ('name' in data && data.name === gettext('PSQL Tool')){
+      var input = {},
+        t = pgAdmin.Browser.tree,
+        i = input.item || t.selected(),
+        d = i && i.length == 1 ? t.itemData(i) : undefined;
+      pgAdmin.Browser.psql.psql_tool(d, i, true);
+    }
   });
 }
 

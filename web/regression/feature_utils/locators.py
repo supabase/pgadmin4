@@ -14,12 +14,12 @@ class BrowserToolBarLocators():
         ".wcFrameButton[title='Query Tool']:not(.disabled)"
 
     query_tool_panel_css = \
-        ".wcPanelTab .wcTabIcon.pg-font-icon.icon-query-tool"
+        ".wcPanelTab .wcTabIcon.pg-font-icon.icon-query_tool"
 
     view_table_data_button_css = \
         ".wcFrameButton[title='View Data']:not(.disabled)"
 
-    view_data_panel_css = ".wcPanelTab .wcTabIcon.fa.fa-table"
+    view_data_panel_css = ".wcPanelTab .wcTabIcon.pg-font-icon.icon-view_data"
 
     filter_data_button_css = \
         ".wcFrameButton[title='Filtered Rows']:not(.disabled)"
@@ -66,6 +66,11 @@ class NavMenuLocators:
 
     insert_bracket_pair_switch_btn = \
         "//div[span[normalize-space(text())='Insert bracket pairs?']]" \
+        "//div[contains(@class,'toggle btn')]"
+
+    copy_sql_to_query_tool_switch_btn = \
+        "//div[span[normalize-space(text())=" \
+        "'Copy SQL from main window to query tool?']]" \
         "//div[contains(@class,'toggle btn')]"
 
     backup_filename_txt_box_name = "file"
@@ -182,6 +187,9 @@ class QueryToolLocators:
     paste_button_css = "#btn-paste-row"
 
     row_editor_text_area_css = ".pg-text-editor > textarea"
+
+    json_editor_text_area_css = \
+        "div.ace_layer.ace_text-layer .ace_line_group .ace_line"
 
     text_editor_ok_btn_css = ".btn.btn-primary.long_text_editor"
 

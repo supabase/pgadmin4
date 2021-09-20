@@ -96,7 +96,7 @@ $color-editor-comment: #FFAD65;
 $color-editor-bracket: #D6AAAA;
 $color-editor-operator: $color-fg;
 $color-editor-foldmarker: #FFFFFF;
-$color-editor-activeline: #50B0F0;
+$color-editor-activeline: #063057;
 
 $active-color: $color-fg;
 $active-border: 3px solid $color-primary;
@@ -151,7 +151,7 @@ $btn-secondary-bg: transparent;
 $btn-secondary-fg: $color-primary;
 $btn-secondary-hover-fg: $color-fg;
 $btn-secondary-border: $color-primary;
-$btn-secondary-disabled-bg: $color-gray-lighter;
+$btn-secondary-disabled-border-color: $color-gray-lighter;
 $btn-secondary-disabled-fg: $color-gray-lighter;
 
 $btn-frame-close-bg: $color-gray-light;
@@ -207,3 +207,10 @@ $quick-search-a-text-color: $black !default;
 $quick-search-info-icon: #8A8A8A !default;
 
 $select2-readonly: $color-gray;
+
+// psql tool variables
+$psql-background: $color-bg;
+$psql-foreground: $color-fg;
+$psql-cursor: $color-fg;
+$psql-cursorAccent: $color-fg;
+$psql-selection: $color-primary-light;

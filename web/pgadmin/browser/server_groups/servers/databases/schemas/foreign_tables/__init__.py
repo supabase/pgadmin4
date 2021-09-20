@@ -63,7 +63,6 @@ class ForeignTableModule(SchemaChildModule):
         super(ForeignTableModule, self).__init__(*args, **kwargs)
         self.min_ver = None
         self.max_ver = None
-        self.min_gpdbver = 1000000000
 
     def get_nodes(self, gid, sid, did, scid):
         """
@@ -338,6 +337,8 @@ class ForeignTableView(PGChildNodeView, DataTypeReader,
 
         if not isinstance(req[key], list) and req[key]:
             data[key] = json.loads(req[key], encoding='utf-8')
+        elif req[key]:
+            data[key] = req[key]
 
         if key == 'inherits':
             # Convert Table ids from unicode/string to int

@@ -12,13 +12,16 @@
 import pgadmin.utils.driver as driver
 from flask import url_for, render_template, Response, request
 from flask_babelex import gettext
-from pgadmin.utils import PgAdminModule
+from pgadmin.utils import PgAdminModule, replace_binary_path
 from pgadmin.utils.csrf import pgCSRFProtect
 from pgadmin.utils.session import cleanup_session_files
 from pgadmin.misc.themes import get_all_themes
-from pgadmin.utils.constants import MIMETYPE_APP_JS
+from pgadmin.utils.constants import MIMETYPE_APP_JS, UTILITIES_ARRAY
+from pgadmin.utils.ajax import precondition_required, make_json_response
 import config
-from werkzeug.exceptions import InternalServerError
+import subprocess
+import os
+import json
 
 MODULE_NAME = 'misc'
 
@@ -98,7 +101,8 @@ class MiscModule(PgAdminModule):
         Returns:
             list: a list of url endpoints exposed to the client.
         """
-        return ['misc.ping', 'misc.index', 'misc.cleanup']
+        return ['misc.ping', 'misc.index', 'misc.cleanup',
+                'misc.validate_binary_path']
 
 
 # Initialise the module
@@ -165,3 +169,54 @@ def shutdown():
         return 'SHUTDOWN'
     else:
         return ''
+
+
+##########################################################################
+# A special URL used to validate the binary path
+##########################################################################
+@blueprint.route("/validate_binary_path",
+                 endpoint="validate_binary_path",
+                 methods=["POST"])
+def validate_binary_path():
+    """
+    This function is used to validate the specified utilities path by
+    running the utilities with there versions.
+    """
+    data = None
+    if hasattr(request.data, 'decode'):
+        data = request.data.decode('utf-8')
+
+    if data != '':
+        data = json.loads(data)
+
+    version_str = ''
+    if 'utility_path' in data and data['utility_path'] is not None:
+        # Check if "$DIR" present in binary path
+        binary_path = replace_binary_path(data['utility_path'])
+
+        for utility in UTILITIES_ARRAY:
+            full_path = os.path.abspath(
+                os.path.join(binary_path,
+                             (utility if os.name != 'nt' else
+                              (utility + '.exe'))))
+
+            try:
+                # Get the output of the '--version' command
+                version_string = \
+                    subprocess.getoutput('"{0}" --version'.format(full_path))
+                # Get the version number by splitting the result string
+                version_string.split(") ", 1)[1].split('.', 1)[0]
+            except Exception:
+                version_str += "<b>" + utility + ":</b> " + \
+                               "not found on the specified binary path.<br/>"
+                continue
+
+            # Replace the name of the utility from the result to avoid
+            # duplicate name.
+            result_str = version_string.replace(utility, '')
+
+            version_str += "<b>" + utility + ":</b> " + result_str + "<br/>"
+    else:
+        return precondition_required(gettext('Invalid binary path.'))
+
+    return make_json_response(data=gettext(version_str), status=200)

@@ -105,6 +105,10 @@ class ServerManager(object):
             self.tunnel_identity_file = None
             self.tunnel_password = None
 
+        self.kerberos_conn = server.kerberos_conn
+        self.gss_authenticated = False
+        self.gss_encrypted = False
+
         for con in self.connections:
             self.connections[con]._release()
 

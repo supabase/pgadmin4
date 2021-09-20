@@ -1,4 +1,4 @@
-CREATE SEQUENCE {{ conn|qtIdent(data.schema, data.name) }}{% if data.increment is defined and data.cycled %}
+CREATE SEQUENCE IF NOT EXISTS {{ conn|qtIdent(data.schema, data.name) }}{% if data.increment is defined and data.cycled %}
 
     CYCLE{% endif %}{% if data.increment is defined %}
 
@@ -12,5 +12,7 @@ CREATE SEQUENCE {{ conn|qtIdent(data.schema, data.name) }}{% if data.increment i
 
     MAXVALUE {{data.maximum|int}}{% endif %}{% if data.cache is defined and data.cache|int(-1) > -1%}
 
-    CACHE {{data.cache|int}}{% endif %};
+    CACHE {{data.cache|int}}{% endif %}{% if data.owned_table is defined and data.owned_table != None and data.owned_column is defined and data.owned_column != None %}
+
+    OWNED BY {{ conn|qtIdent(data.owned_table) }}.{{ conn|qtIdent(data.owned_column) }}{% endif %};
 

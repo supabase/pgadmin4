@@ -43,16 +43,16 @@ APP_ICON = 'pg-icon'
 
 # Application version number components
 APP_RELEASE = 5
-APP_REVISION = 1
+APP_REVISION = 7
 
 # Application version suffix, e.g. 'beta1', 'dev'. Usually an empty string
 # for GA releases.
-APP_SUFFIX = ''
+APP_SUFFIX = 'dev'
 
 # Numeric application version for upgrade checks. Should be in the format:
 # [X]XYYZZ, where X is the release version, Y is the revision, with a leading
 # zero if needed, and Z represents the suffix, with a leading zero if needed
-APP_VERSION_INT = 50100
+APP_VERSION_INT = 50701
 
 # DO NOT CHANGE!
 # The application version string, constructed from the components
@@ -156,8 +156,8 @@ X_FRAME_OPTIONS = "SAMEORIGIN"
 # such as JavaScript, CSS, or pretty much anything that the browser loads.
 # see https://content-security-policy.com/#source_list for more info
 # e.g. "default-src https: data: 'unsafe-inline' 'unsafe-eval';"
-CONTENT_SECURITY_POLICY = "default-src http: data: blob: 'unsafe-inline' " \
-                          "'unsafe-eval';"
+CONTENT_SECURITY_POLICY = "default-src ws: http: data: blob: 'unsafe-inline'" \
+                          " 'unsafe-eval';"
 
 # STRICT_TRANSPORT_SECURITY_ENABLED when set to True will set the
 # Strict-Transport-Security header
@@ -286,6 +286,13 @@ if SERVER_MODE and not IS_WIN:
 else:
     LOG_FILE = os.path.join(DATA_DIR, 'pgadmin4.log')
 
+# Log rotation setting
+# Log file will be rotated considering values for LOG_ROTATION_SIZE
+# & LOG_ROTATION_AGE. Rotated file will be named in format
+# - LOG_FILE.Y-m-d_H-M-S
+LOG_ROTATION_SIZE = 10  # In MBs
+LOG_ROTATION_AGE = 1440  # In minutes
+LOG_ROTATION_MAX_LOG_FILES = 90  # Maximum number of backups to retain
 ##########################################################################
 # Server Connection Driver Settings
 ##########################################################################
@@ -375,6 +382,17 @@ SECURITY_EMAIL_SUBJECT_PASSWORD_CHANGE_NOTICE = \
     "Your password for %s has been changed" % APP_NAME
 
 ##########################################################################
+# Email address validation
+##########################################################################
+
+# flask-security-too will validate email addresses and check deliverability
+# by default. Disable the deliverability check by default, which was the old
+# behaviour in <= v5.3
+CHECK_EMAIL_DELIVERABILITY = False
+SECURITY_EMAIL_VALIDATOR_ARGS = \
+    {"check_deliverability": CHECK_EMAIL_DELIVERABILITY}
+
+##########################################################################
 # Upgrade checks
 ##########################################################################
 
@@ -416,6 +434,10 @@ STORAGE_DIR = os.path.join(DATA_DIR, 'storage')
 #
 # A default location can be specified for each database driver ID, in
 # a dictionary. Either an absolute or relative path can be specified.
+#
+# Version-specific defaults can also be specified, which will take priority
+# over un-versioned paths.
+#
 # In cases where it may be difficult to know what the working directory
 # is, "$DIR" can be specified. This will be replaced with the path to the
 # top-level pgAdmin4.py file. For example, on macOS we might use:
@@ -425,8 +447,17 @@ STORAGE_DIR = os.path.join(DATA_DIR, 'storage')
 ##########################################################################
 DEFAULT_BINARY_PATHS = {
     "pg": "",
+    "pg-9.6": "",
+    "pg-10": "",
+    "pg-11": "",
+    "pg-12": "",
+    "pg-13": "",
     "ppas": "",
-    "gpdb": ""
+    "ppas-9.6": "",
+    "ppas-10": "",
+    "ppas-11": "",
+    "ppas-12": "",
+    "ppas-13": ""
 }
 
 ##########################################################################
@@ -482,6 +513,10 @@ SESSION_SKIP_PATHS = [
 # expire after the specified number of *days*.
 SESSION_EXPIRATION_TIME = 1
 
+# Make SESSION_EXPIRATION_TIME to 1 week in DESKTOP mode
+if not SERVER_MODE:
+    SESSION_EXPIRATION_TIME = 7
+
 # CHECK_SESSION_FILES_INTERVAL is interval in Hours. Application will check
 # the session files for cleanup after specified number of *hours*.
 CHECK_SESSION_FILES_INTERVAL = 24
@@ -531,13 +566,26 @@ ENHANCED_COOKIE_PROTECTION = True
 ##########################################################################
 
 # Default setting is internal
-# External Supported Sources: ldap, kerberos
+# External Supported Sources: ldap, kerberos, oauth2
 # Multiple authentication can be achieved by setting this parameter to
-# ['ldap', 'internal']. pgAdmin will authenticate the user with ldap first,
-# in case of failure internal authentication will be done.
+# ['ldap', 'internal'] or ['oauth2', 'internal'] etc.
+# pgAdmin will authenticate the user with ldap/oauth2 whatever first in the
+# list, in case of failure the second authentication option will be considered.
 
 AUTHENTICATION_SOURCES = ['internal']
 
+##########################################################################
+# MAX_LOGIN_ATTEMPTS which sets the number of failed login attempts that
+# are allowed. If this value is exceeded the account is locked and can be
+# reset by an administrator. By setting the variable to the value zero
+# this feature is deactivated.
+##########################################################################
+MAX_LOGIN_ATTEMPTS = 3
+
+##########################################################################
+# Only consider password to check the failed login attempts, email is
+# excluded from this check
+LOGIN_ATTEMPT_FIELDS = ['password']
 ##########################################################################
 # LDAP Configuration
 ##########################################################################
@@ -614,7 +662,6 @@ LDAP_CA_CERT_FILE = ''
 LDAP_CERT_FILE = ''
 LDAP_KEY_FILE = ''
 
-
 ##########################################################################
 # Kerberos Configuration
 ##########################################################################
@@ -633,6 +680,68 @@ KRB_KTNAME = '<KRB5_KEYTAB_FILE>'
 # in this case Admin has to add the user manually in the SQLite database.
 
 KRB_AUTO_CREATE_USER = True
+
+KERBEROS_CCACHE_DIR = os.path.join(DATA_DIR, 'krbccache')
+
+##########################################################################
+# OAuth2 Configuration
+##########################################################################
+
+# Multiple OAUTH2 providers can be added in the list like [{...},{...}]
+# All parameters are required
+
+OAUTH2_CONFIG = [
+    {
+        # The name of the of the oauth provider, ex: github, google
+        'OAUTH2_NAME': None,
+        # The display name, ex: Google
+        'OAUTH2_DISPLAY_NAME': '<Oauth2 Display Name>',
+        # Oauth client id
+        'OAUTH2_CLIENT_ID': None,
+        # Oauth secret
+        'OAUTH2_CLIENT_SECRET': None,
+        # URL to generate a token,
+        # Ex: https://github.com/login/oauth/access_token
+        'OAUTH2_TOKEN_URL': None,
+        # URL is used for authentication,
+        # Ex: https://github.com/login/oauth/authorize
+        'OAUTH2_AUTHORIZATION_URL': None,
+        # Oauth base url, ex: https://api.github.com/
+        'OAUTH2_API_BASE_URL': None,
+        # Name of the Endpoint, ex: user
+        'OAUTH2_USERINFO_ENDPOINT': None,
+        # Oauth scope, ex: 'openid email profile'
+        # Note that an 'email' claim is required in the resulting profile
+        'OAUTH2_SCOPE': None,
+        # Font-awesome icon, ex: fa-github
+        'OAUTH2_ICON': None,
+        # UI button colour, ex: #0000ff
+        'OAUTH2_BUTTON_COLOR': None,
+    }
+]
+
+# After Oauth authentication, user will be added into the SQLite database
+# automatically, if set to True.
+# Set it to False, if user should not be added automatically,
+# in this case Admin has to add the user manually in the SQLite database.
+
+OAUTH2_AUTO_CREATE_USER = True
+
+##########################################################################
+# PSQL tool settings
+##########################################################################
+# This will enable PSQL tool in pgAdmin when running in server mode.
+# PSQL is always enabled in Desktop mode, however in server mode it is
+# disabled by default because users can run arbitrary commands on the
+# server through it.
+ENABLE_PSQL = False
+
+##########################################################################
+# ENABLE_BINARY_PATH_BROWSING setting is used to enable the browse button
+# while selecting binary path for the database server in server mode.
+# In Desktop mode it is always enabled and setting is of no use.
+##########################################################################
+ENABLE_BINARY_PATH_BROWSING = False
 
 ##########################################################################
 # Local config settings
@@ -673,3 +782,5 @@ if 'PGADMIN_CONFIG_DEFAULT_SERVER' in os.environ:
 # Disable USER_INACTIVITY_TIMEOUT when SERVER_MODE=False
 if not SERVER_MODE:
     USER_INACTIVITY_TIMEOUT = 0
+    # Enable PSQL in Desktop Mode.
+    ENABLE_PSQL = True

@@ -10,9 +10,6 @@
 """Perform the initial setup of the application, by creating the auth
 and settings database."""
 
-from pgadmin.model import db, User, Version, ServerGroup, Server, \
-    SCHEMA_VERSION as CURRENT_SCHEMA_VERSION
-from pgadmin import create_app
 import argparse
 import json
 import os
@@ -32,6 +29,10 @@ else:
 root = os.path.dirname(os.path.realpath(__file__))
 if sys.path[0] != root:
     sys.path.insert(0, root)
+
+from pgadmin.model import db, User, Version, ServerGroup, Server, \
+    SCHEMA_VERSION as CURRENT_SCHEMA_VERSION
+from pgadmin import create_app
 
 
 def add_value(attr_dict, key, value):
@@ -181,18 +182,25 @@ def _validate_servers_data(data, is_admin):
             if attrib not in obj:
                 return ("'%s' attribute not found for server '%s'" %
                         (attrib, server))
+            return None
 
-        check_attrib("Name")
-        check_attrib("Group")
+        for attrib in ("Group", "Name"):
+            errmsg = check_attrib(attrib)
+            if errmsg:
+                return errmsg
 
         is_service_attrib_available = obj.get("Service", None) is not None
 
         if not is_service_attrib_available:
-            check_attrib("Port")
-            check_attrib("Username")
+            for attrib in ("Port", "Username"):
+                errmsg = check_attrib(attrib)
+                if errmsg:
+                    return errmsg
 
-        check_attrib("SSLMode")
-        check_attrib("MaintenanceDB")
+        for attrib in ("SSLMode", "MaintenanceDB"):
+            errmsg = check_attrib(attrib)
+            if errmsg:
+                return errmsg
 
         if "Host" not in obj and "HostAddr" not in obj and not \
                 is_service_attrib_available:

@@ -14,11 +14,14 @@ import os
 import sys
 import re
 import ipaddress
+import traceback
+
 from types import MethodType
 from collections import defaultdict
 from importlib import import_module
 
 from flask import Flask, abort, request, current_app, session, url_for
+from flask_socketio import SocketIO
 from werkzeug.exceptions import HTTPException
 from flask_babelex import Babel, gettext
 from flask_babelex import gettext as _
@@ -37,24 +40,30 @@ from pgadmin.utils import PgAdminModule, driver, KeyManager
 from pgadmin.utils.preferences import Preferences
 from pgadmin.utils.session import create_session_interface, pga_unauthorised
 from pgadmin.utils.versioned_template_loader import VersionedTemplateLoader
-from datetime import timedelta
-from pgadmin.setup import get_version, set_version
+from datetime import timedelta, datetime
+from pgadmin.setup import get_version, set_version, check_db_tables
 from pgadmin.utils.ajax import internal_server_error, make_json_response
 from pgadmin.utils.csrf import pgCSRFProtect
 from pgadmin import authenticate
 from pgadmin.utils.security_headers import SecurityHeaders
-from pgadmin.utils.constants import KERBEROS
+from pgadmin.utils.constants import KERBEROS, OAUTH2, INTERNAL, LDAP
 
 # Explicitly set the mime-types so that a corrupted windows registry will not
 # affect pgAdmin 4 to be load properly. This will avoid the issues that may
 # occur due to security fix of X_CONTENT_TYPE_OPTIONS = "nosniff".
 import mimetypes
+
 mimetypes.add_type('application/javascript', '.js')
 mimetypes.add_type('text/css', '.css')
+
 
 winreg = None
 if os.name == 'nt':
     import winreg
+
+socketio = SocketIO(manage_session=False, async_mode='threading',
+                    logger=False, engineio_logger=False, debug=False,
+                    ping_interval=25, ping_timeout=120)
 
 
 class PgAdmin(Flask):
@@ -256,7 +265,13 @@ def create_app(app_name=None):
         create_app_data_directory(config)
 
         # File logging
-        fh = logging.FileHandler(config.LOG_FILE, encoding='utf-8')
+        from pgadmin.utils.enhanced_log_rotation import \
+            EnhancedRotatingFileHandler
+        fh = EnhancedRotatingFileHandler(config.LOG_FILE,
+                                         config.LOG_ROTATION_SIZE,
+                                         config.LOG_ROTATION_AGE,
+                                         config.LOG_ROTATION_MAX_LOG_FILES)
+
         fh.setLevel(config.FILE_LOG_LEVEL)
         fh.setFormatter(logging.Formatter(config.FILE_LOG_FORMAT))
         app.logger.addHandler(fh)
@@ -290,10 +305,11 @@ def create_app(app_name=None):
         language = 'en'
         if config.SERVER_MODE is False:
             # Get the user language preference from the miscellaneous module
+            user_id = None
             if current_user.is_authenticated:
                 user_id = current_user.id
             else:
-                user = user_datastore.get_user(config.DESKTOP_USER)
+                user = user_datastore.find_user(email=config.DESKTOP_USER)
                 if user is not None:
                     user_id = user.id
             user_language = Preferences.raw_value(
@@ -337,6 +353,44 @@ def create_app(app_name=None):
     ##########################################################################
     # Upgrade the schema (if required)
     ##########################################################################
+    def backup_db_file():
+        """
+        Create a backup of the current database file
+        and create new database file with default settings.
+        """
+        backup_file_name = "{0}.{1}".format(
+            SQLITE_PATH, datetime.now().strftime('%Y%m%d%H%M%S'))
+        os.rename(SQLITE_PATH, backup_file_name)
+        app.logger.error('Exception in database migration.')
+        app.logger.info('Creating new database file.')
+        try:
+            db_upgrade(app)
+            os.environ[
+                'CORRUPTED_DB_BACKUP_FILE'] = backup_file_name
+            app.logger.info('Database migration completed.')
+        except Exception as e:
+            app.logger.error('Database migration failed')
+            app.logger.error(traceback.format_exc())
+            raise RuntimeError('Migration failed')
+
+    def upgrade_db():
+        """
+        Execute the migrations.
+        """
+        try:
+            db_upgrade(app)
+            os.environ['CORRUPTED_DB_BACKUP_FILE'] = ''
+        except Exception as e:
+            backup_db_file()
+
+        # check all tables are present in the db.
+        is_db_error, invalid_tb_names = check_db_tables()
+        if is_db_error:
+            app.logger.error(
+                'Table(s) {0} are missing in the'
+                ' database'.format(invalid_tb_names))
+            backup_db_file()
+
     with app.app_context():
         # Run migration for the first time i.e. create database
         from config import SQLITE_PATH
@@ -348,21 +402,29 @@ def create_app(app_name=None):
             # If running in cli mode then don't try to upgrade, just raise
             # the exception
             if not cli_mode:
-                db_upgrade(app)
+                upgrade_db()
             else:
                 if not os.path.exists(SQLITE_PATH):
                     raise FileNotFoundError(
                         'SQLite database file "' + SQLITE_PATH +
                         '" does not exists.')
-                raise RuntimeError('Specified SQLite database file '
-                                   'is not valid.')
+                raise RuntimeError(
+                    'The configuration database file is not valid.')
         else:
             schema_version = get_version()
 
             # Run migration if current schema version is greater than the
             # schema version stored in version table
             if CURRENT_SCHEMA_VERSION >= schema_version:
-                db_upgrade(app)
+                upgrade_db()
+            else:
+                # check all tables are present in the db.
+                is_db_error, invalid_tb_names = check_db_tables()
+                if is_db_error:
+                    app.logger.error(
+                        'Table(s) {0} are missing in the'
+                        ' database'.format(invalid_tb_names))
+                    backup_db_file()
 
             # Update schema version to the latest
             if CURRENT_SCHEMA_VERSION > schema_version:
@@ -404,6 +466,15 @@ def create_app(app_name=None):
         # CSRF Token expiration till session expires
         'WTF_CSRF_TIME_LIMIT': getattr(config, 'CSRF_TIME_LIMIT', None),
         'WTF_CSRF_METHODS': ['GET', 'POST', 'PUT', 'DELETE'],
+        # Disable deliverable check for email addresss
+        'SECURITY_EMAIL_VALIDATOR_ARGS': config.SECURITY_EMAIL_VALIDATOR_ARGS
+    }))
+
+    app.config.update(dict({
+        'INTERNAL': INTERNAL,
+        'LDAP': LDAP,
+        'KERBEROS': KERBEROS,
+        'OAUTH2': OAUTH2
     }))
 
     security.init_app(app, user_datastore)
@@ -610,14 +681,14 @@ def create_app(app_name=None):
         from pgadmin.utils.driver import get_driver
         from flask import current_app
 
-        # remove key
-        current_app.keyManager.reset()
-
         for mdl in current_app.logout_hooks:
             try:
                 mdl.on_logout(user)
             except Exception as e:
                 current_app.logger.exception(e)
+
+        # remove key
+        current_app.keyManager.reset()
 
         _driver = get_driver(PG_DEFAULT_DRIVER)
         _driver.gc_own()
@@ -685,7 +756,7 @@ def create_app(app_name=None):
             abort(401)
 
         if not config.SERVER_MODE and not current_user.is_authenticated:
-            user = user_datastore.get_user(config.DESKTOP_USER)
+            user = user_datastore.find_user(email=config.DESKTOP_USER)
             # Throw an error if we failed to find the desktop user, to give
             # the sysadmin a hint. We'll continue to try to login anyway as
             # that'll through a nice 500 error for us.
@@ -697,19 +768,18 @@ def create_app(app_name=None):
                 )
                 abort(401)
             login_user(user)
-        elif config.SERVER_MODE and\
-                app.PGADMIN_EXTERNAL_AUTH_SOURCE ==\
-                KERBEROS and \
+        elif config.SERVER_MODE and \
                 not current_user.is_authenticated and \
                 request.endpoint in ('redirects.index', 'security.login'):
-            return authenticate.login()
-
+            if app.PGADMIN_EXTERNAL_AUTH_SOURCE == KERBEROS:
+                return authenticate.login()
         # if the server is restarted the in memory key will be lost
         # but the user session may still be active. Logout the user
         # to get the key again when login
         if config.SERVER_MODE and current_user.is_authenticated and \
                 app.PGADMIN_EXTERNAL_AUTH_SOURCE != \
-                KERBEROS and \
+                KERBEROS and app.PGADMIN_EXTERNAL_AUTH_SOURCE != \
+                OAUTH2 and\
                 current_app.keyManager.get() is None and \
                 request.endpoint not in ('security.login', 'security.logout'):
             logout_user()
@@ -811,4 +881,5 @@ def create_app(app_name=None):
     ##########################################################################
     # All done!
     ##########################################################################
+    socketio.init_app(app)
     return app

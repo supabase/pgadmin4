@@ -24,16 +24,7 @@ appbundle:
 	./pkg/mac/build.sh
 
 install-node:
-	cd web && npm install
-	cd web && npm audit fix
-	rm -f web/yarn.lock
-	cd web && yarn import
-# Commented the below line to avoid vulnerability in lodash package.
-# Refer https://www.npmjs.com/advisories/1523.
-# Once fixed we will uncomment it.
-#	cd web && yarn audit
-	rm -f package-lock.json
-	rm -f web/package-lock.json
+	cd web && yarn install
 
 bundle:
 	cd web && yarn run bundle
@@ -151,7 +142,7 @@ msg-extract:
 	cd web && pybabel extract -F babel.cfg -o pgadmin/messages.pot pgadmin
 
 msg-update:
-	cd web && pybabel update -i pgadmin/messages.pot -d pgadmin/translations
+	cd web && pybabel update --no-fuzzy-matching -i pgadmin/messages.pot -d pgadmin/translations
 
 .PHONY: docs
 

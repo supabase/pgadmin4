@@ -18,6 +18,25 @@
   z-index: 0;
 }
 
+.data-output-container {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  left: 0;
+  overflow: hidden;
+}
+
+.sql-editor-busy-text-status {
+  position: absolute;
+  padding: 0.25rem;
+  bottom: 0;
+  right: 0;
+  left: 0;
+  background-color: $color-warning-light;
+  color: $color-warning-fg;
+}
+
 .connection_status {
   background-color: $sql-title-bg;
   color: $sql-title-fg;
@@ -57,10 +76,6 @@
   bottom: 0;
   left: 0;
   right: 0;
-}
-
-#editor-panel .CodeMirror-activeline-background {
-  background: $color-primary-light;
 }
 
 
@@ -285,8 +300,22 @@ li.CodeMirror-hint-active {
   & .pg-text-invalid {
     background: $color-danger-lighter;
   }
+
+  & #pg-json-editor {
+    min-width:525px;
+    min-height:300px;
+    height:295px;
+    width:550px;
+    border: $panel-border;
+    outline:0;
+    resize: both;
+    overflow:auto
+  }
 }
 
+.pg_buttons {
+  padding-top: 3px;
+}
 .sql-editor-message {
   white-space:pre-wrap;
   font-family: $font-family-editor;
@@ -378,3 +407,20 @@ div.strikeout:after {
 /* Setting it to hardcoded white as the SVG generated is having white bg
  * Need to check what can be done.
  */
+
+/* Css for psql */
+.psql_terminal .terminal {
+  padding-top: 1%;
+  padding-left: 0.5%;
+  height: 100%;
+}
+
+.psql-icon-style {
+  font-size: inherit;
+  padding-left: 0em;
+}
+
+.psql-tab-style {
+  font-size: small;
+  padding-left: 0em;
+}

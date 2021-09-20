@@ -72,6 +72,8 @@ class _Preference(object):
         self.select2 = kwargs.get('select2', None)
         self.fields = kwargs.get('fields', None)
         self.allow_blanks = kwargs.get('allow_blanks', None)
+        self.disabled = kwargs.get('disabled', False)
+        self.dependents = kwargs.get('dependents', None)
 
         # Look into the configuration table to find out the id of the specific
         # preference.
@@ -252,6 +254,8 @@ class _Preference(object):
             'select2': self.select2,
             'value': self.get(),
             'fields': self.fields,
+            'disabled': self.disabled,
+            'dependents': self.dependents
         }
         return res
 
@@ -414,6 +418,7 @@ class Preferences(object):
         :param fields: field schema (if preference has more than one field to
                         take input from user e.g. keyboardshortcut preference)
         :param allow_blanks: Flag specify whether to allow blank value.
+        :param disabled: Flag specify whether to disable the setting or not.
         """
         min_val = kwargs.get('min_val', None)
         max_val = kwargs.get('max_val', None)
@@ -423,6 +428,8 @@ class Preferences(object):
         select2 = kwargs.get('select2', None)
         fields = kwargs.get('fields', None)
         allow_blanks = kwargs.get('allow_blanks', None)
+        disabled = kwargs.get('disabled', False)
+        dependents = kwargs.get('dependents', None)
 
         cat = self.__category(category, category_label)
         if name in cat['preferences']:
@@ -433,13 +440,14 @@ class Preferences(object):
         assert _type in (
             'boolean', 'integer', 'numeric', 'date', 'datetime',
             'options', 'multiline', 'switch', 'node', 'text', 'radioModern',
-            'keyboardshortcut', 'select2'
+            'keyboardshortcut', 'select2', 'selectFile', 'threshold'
         ), "Type cannot be found in the defined list!"
 
         (cat['preferences'])[name] = res = _Preference(
             cat['id'], name, label, _type, default, help_str=help_str,
             min_val=min_val, max_val=max_val, options=options,
-            select2=select2, fields=fields, allow_blanks=allow_blanks
+            select2=select2, fields=fields, allow_blanks=allow_blanks,
+            disabled=disabled, dependents=dependents
         )
 
         return res
@@ -630,3 +638,15 @@ class Preferences(object):
             return False, str(e)
 
         return True, None
+
+    def migrate_user_preferences(self, pid, converter_func):
+        """
+        This function is used to migrate user preferences.
+        """
+        user_prefs = UserPrefTable.query.filter_by(
+            pid=pid
+        )
+        for pref in user_prefs:
+            pref.value = converter_func(pref.value)
+
+        db.session.commit()

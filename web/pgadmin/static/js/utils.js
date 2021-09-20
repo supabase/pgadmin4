@@ -10,7 +10,10 @@
 import _ from 'underscore';
 import { getTreeNodeHierarchyFromIdentifier } from 'sources/tree/pgadmin_tree_node';
 import $ from 'jquery';
+import gettext from 'sources/gettext';
+import 'wcdocker';
 
+var wcDocker = window.wcDocker;
 
 export function parseShortcutValue(obj) {
   var shortcut = '';
@@ -359,4 +362,85 @@ export function CSVToArray( strData, strDelimiter, quoteChar){
   }
   // Return the parsed data.
   return arrData;
+}
+
+export function hasBinariesConfiguration(pgBrowser, serverInformation, alertify) {
+  const module = 'paths';
+  let preference_name = 'pg_bin_dir';
+  let msg = gettext('Please configure the PostgreSQL Binary Path in the Preferences dialog.');
+
+  if ((serverInformation.type && serverInformation.type === 'ppas') ||
+    serverInformation.server_type === 'ppas') {
+    preference_name = 'ppas_bin_dir';
+    msg = gettext('Please configure the EDB Advanced Server Binary Path in the Preferences dialog.');
+  }
+
+  const preference = pgBrowser.get_preference(module, preference_name);
+
+  if (preference) {
+    if (_.isUndefined(preference.value) || !checkBinaryPathExists(preference.value, serverInformation.version)) {
+      alertify.alert(gettext('Configuration required'), msg);
+      return false;
+    }
+  } else {
+    alertify.alert(
+      gettext('Preferences Error'),
+      gettext('Failed to load preference %s of module %s', preference_name, module)
+    );
+    return false;
+  }
+  return true;
+}
+
+function checkBinaryPathExists(binaryPathArray, selectedServerVersion) {
+  let foundDefaultPath = false,
+    serverSpecificPathExist = false,
+    binPathArray = JSON.parse(binaryPathArray);
+
+  _.each(binPathArray, function(binPath) {
+    if (selectedServerVersion >= binPath.version && selectedServerVersion < binPath.next_major_version) {
+      if (!_.isUndefined(binPath.binaryPath) && !_.isNull(binPath.binaryPath) && binPath.binaryPath.trim() !== '')
+        serverSpecificPathExist = true;
+    }
+
+    // Check for default path
+    if (binPath.isDefault) {
+      foundDefaultPath = true;
+    }
+  });
+
+  return (serverSpecificPathExist | foundDefaultPath);
+}
+
+/* If a function, then evaluate */
+export function evalFunc(obj, func, param) {
+  if(_.isFunction(func)) {
+    return func.apply(obj, [param]);
+  }
+  return func;
+}
+
+export function registerDetachEvent(panel){
+  panel.on(wcDocker.EVENT.DETACHED, function() {
+    $((this.$container)[0].ownerDocument).find('.wcIFrameFloating').attr({
+      style: 'z-index: 1200'
+    });
+  });
+  panel.on(wcDocker.EVENT.ORDER_CHANGED, function() {
+    $((this.$container)[0].ownerDocument).find('.wcIFrameFloating').attr({
+      style: 'z-index: 1200'
+    });
+  });
+  panel.on(wcDocker.EVENT.ORDER_CHANGED, function() {
+    var docker = this.docker(this._panel);
+    var dockerPos = docker.$container.offset();
+    var pos = this.$container.offset();
+    var width = this.$container.width();
+    var height = this.$container.height();
+
+    $((this.$container)[0].ownerDocument).find('.wcIFrameFloating').css('top', pos.top - dockerPos.top);
+    $((this.$container)[0].ownerDocument).find('.wcIFrameFloating').css('left', pos.left - dockerPos.left);
+    $((this.$container)[0].ownerDocument).find('.wcIFrameFloating').css('width', width);
+    $((this.$container)[0].ownerDocument).find('.wcIFrameFloating').find('.wcIFrameFloating').css('height', height);
+  });
 }

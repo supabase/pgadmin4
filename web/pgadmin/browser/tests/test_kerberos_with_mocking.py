@@ -12,6 +12,8 @@ from pgadmin.utils.route import BaseTestGenerator
 from regression.python_test_utils import test_utils as utils
 from pgadmin.authenticate.registry import AuthSourceRegistry
 from unittest.mock import patch, MagicMock
+from werkzeug.datastructures import Headers
+from pgadmin.utils.constants import LDAP, INTERNAL, KERBEROS
 
 
 class KerberosLoginMockTestCase(BaseTestGenerator):
@@ -22,14 +24,19 @@ class KerberosLoginMockTestCase(BaseTestGenerator):
 
     scenarios = [
         ('Spnego/Kerberos Authentication: Test Unauthorized', dict(
-            auth_source=['kerberos'],
+            auth_source=[KERBEROS],
             auto_create_user=True,
             flag=1
         )),
         ('Spnego/Kerberos Authentication: Test Authorized', dict(
-            auth_source=['kerberos'],
+            auth_source=[KERBEROS],
             auto_create_user=True,
             flag=2
+        )),
+        ('Spnego/Kerberos Update Ticket', dict(
+            auth_source=[KERBEROS],
+            auto_create_user=True,
+            flag=3
         ))
     ]
 
@@ -43,7 +50,7 @@ class KerberosLoginMockTestCase(BaseTestGenerator):
 
     def setUp(self):
         app_config.AUTHENTICATION_SOURCES = self.auth_source
-        self.app.PGADMIN_EXTERNAL_AUTH_SOURCE = 'kerberos'
+        self.app.PGADMIN_EXTERNAL_AUTH_SOURCE = KERBEROS
 
     def runTest(self):
         """This function checks spnego/kerberos login functionality."""
@@ -54,8 +61,13 @@ class KerberosLoginMockTestCase(BaseTestGenerator):
                 self.skipTest(
                     "Can not run Kerberos Authentication in the Desktop mode."
                 )
-
             self.test_authorized()
+        elif self.flag == 3:
+            if app_config.SERVER_MODE is False:
+                self.skipTest(
+                    "Can not run Kerberos Authentication in the Desktop mode."
+                )
+            self.test_update_ticket()
 
     def test_unauthorized(self):
         """
@@ -73,13 +85,7 @@ class KerberosLoginMockTestCase(BaseTestGenerator):
         passed on to the routed method.
         """
 
-        class delCrads:
-            def __init__(self):
-                self.initiator_name = 'user@PGADMIN.ORG'
-        del_crads = delCrads()
-
-        AuthSourceRegistry.registry['kerberos'].negotiate_start = MagicMock(
-            return_value=[True, del_crads])
+        del_crads = self.mock_negotiate_start()
         res = self.tester.login(None,
                                 None,
                                 True,
@@ -89,8 +95,35 @@ class KerberosLoginMockTestCase(BaseTestGenerator):
         respdata = 'Gravatar image for %s' % del_crads.initiator_name
         self.assertTrue(respdata in res.data.decode('utf8'))
 
+    def mock_negotiate_start(self):
+        class delCrads:
+            def __init__(self):
+                self.initiator_name = 'user@PGADMIN.ORG'
+
+        del_crads = delCrads()
+        AuthSourceRegistry._registry[KERBEROS].negotiate_start = MagicMock(
+            return_value=[True, del_crads])
+        return del_crads
+
+    def test_update_ticket(self):
+        # Response header should include the Negotiate header in the first call
+        response = self.tester.get('/kerberos/update_ticket')
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.headers.get('www-authenticate'), 'Negotiate')
+
+        # When we send the Kerberos Ticket, it should return  success
+        del_crads = self.mock_negotiate_start()
+
+        krb_token = Headers({})
+        krb_token['Authorization'] = 'Negotiate CTOKEN'
+
+        response = self.tester.get('/kerberos/update_ticket',
+                                   headers=krb_token)
+        self.assertEqual(response.status_code, 200)
+        self.tester.logout()
+
     def tearDown(self):
-        self.app.PGADMIN_EXTERNAL_AUTH_SOURCE = 'ldap'
+        pass
 
     @classmethod
     def tearDownClass(cls):
@@ -98,5 +131,6 @@ class KerberosLoginMockTestCase(BaseTestGenerator):
         We need to again login the test client as soon as test scenarios
         finishes.
         """
-        app_config.AUTHENTICATION_SOURCES = ['internal']
+        cls.tester.logout()
+        app_config.AUTHENTICATION_SOURCES = [INTERNAL]
         utils.login_tester_account(cls.tester)

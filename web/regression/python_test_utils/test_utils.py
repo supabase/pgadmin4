@@ -8,7 +8,6 @@
 ##########################################################################
 
 
-import fileinput
 import traceback
 import os
 import sys
@@ -17,6 +16,8 @@ import psycopg2
 import sqlite3
 import shutil
 from functools import partial
+import random
+import importlib
 
 from selenium.webdriver.support.wait import WebDriverWait
 from testtools.testcase import clone_test_with_new_id
@@ -35,6 +36,8 @@ import regression
 from regression import test_setup
 
 from pgadmin.utils.preferences import Preferences
+from pgadmin.utils.constants import BINARY_PATHS
+from pgadmin.utils import set_binary_path
 
 from functools import wraps
 
@@ -756,6 +759,21 @@ def configure_preferences(default_binary_path=None):
         paths_pref = Preferences.module('paths')
         server_types = default_binary_path.keys()
         for server in server_types:
+            if server != 'ppas' and server != 'pg':
+                continue
+
+            # get the default binary paths array
+            bin_paths = BINARY_PATHS
+            # set the default binary paths based on server version
+            if server in default_binary_path and \
+                    default_binary_path[server] != "":
+                set_binary_path(
+                    default_binary_path[server], bin_paths, server)
+
+            bin_paths_server_based = json.dumps(bin_paths['pg_bin_paths'])
+            if server == 'ppas':
+                bin_paths_server_based = json.dumps(bin_paths['as_bin_paths'])
+
             pref_bin_path = paths_pref.preference('{0}_bin_dir'.format(server))
             user_pref = cur.execute(
                 'SELECT pid, uid FROM user_preferences '
@@ -766,10 +784,10 @@ def configure_preferences(default_binary_path=None):
             if user_pref_data:
                 cur.execute(
                     'UPDATE user_preferences SET value = ? WHERE pid = ?',
-                    (default_binary_path[server], pref_bin_path.pid)
+                    (bin_paths_server_based, pref_bin_path.pid)
                 )
             else:
-                params = (pref_bin_path.pid, 1, default_binary_path[server])
+                params = (pref_bin_path.pid, 1, bin_paths_server_based)
                 cur.execute(
                     insert_preferences_query, params
                 )
@@ -1083,7 +1101,7 @@ def create_schema(server, db_name, schema_name):
 
 def get_server_type(server):
     """
-    This function will return the type of the server (PPAS, PG or GPDB)
+    This function will return the type of the server (PPAS or PG)
     :param server:
     :return:
     """
@@ -1105,9 +1123,7 @@ def get_server_type(server):
         if isinstance(version_string, tuple):
             version_string = version_string[0]
 
-        if "Greenplum Database" in version_string:
-            return 'gpdb'
-        elif "EnterpriseDB" in version_string:
+        if "EnterpriseDB" in version_string:
             return 'ppas'
 
         return 'pg'
@@ -1332,8 +1348,9 @@ def launch_url_in_browser(driver_instance, url, title='pgAdmin 4', timeout=50):
             if count == 0:
                 print(str(e))
                 exception_msg = 'Web-page title did not match to {0}. ' \
-                                'Please check url {1} accessible on ' \
-                                'internet.'.format(title, url)
+                                'Waited for {1} seconds Please check url {2}' \
+                                ' accessible on internet.'.\
+                    format(title, timeout, url)
                 raise WebDriverException(exception_msg)
 
 
@@ -1347,8 +1364,8 @@ def get_remote_webdriver(hub_url, browser, browser_ver, test_name):
     :param test_name: test name
     :return: remote web-driver instance for specified browser
     """
-    test_name = browser + browser_ver + "_" + test_name + "-" + time.strftime(
-        "%m_%d_%y_%H_%M_%S", time.localtime())
+    test_name = time.strftime("%m_%d_%y_%H_%M_%S_", time.localtime()) + \
+        test_name.replace(' ', '_') + '_' + browser + browser_ver
     driver_local = None
     desired_capabilities = {
         "version": browser_ver,
@@ -1399,7 +1416,8 @@ def get_parallel_sequential_module_list(module_list):
     sequential_tests_file = [
         'pgadmin.feature_tests.pg_utilities_backup_restore_test',
         'pgadmin.feature_tests.pg_utilities_maintenance_test',
-        'pgadmin.feature_tests.keyboard_shortcut_test']
+        'pgadmin.feature_tests.keyboard_shortcut_test'
+    ]
 
     #  list of tests can be executed in parallel
     parallel_tests = list(module_list)
@@ -1636,14 +1654,14 @@ def create_user(user_details):
         cur = conn.cursor()
         user_details = (
             user_details['login_username'], user_details['login_username'],
-            user_details['login_password'], 1)
+            user_details['login_password'], 1, uuid.uuid4().hex)
 
         cur.execute(
             'select * from user where username = "%s"' % user_details[0])
         user = cur.fetchone()
         if user is None:
-            cur.execute('INSERT INTO user (username, email, password, active) '
-                        'VALUES (?,?,?,?)', user_details)
+            cur.execute('INSERT INTO user (username, email, password, active,'
+                        ' fs_uniquifier) VALUES (?,?,?,?,?)', user_details)
             user_id = cur.lastrowid
             conn.commit()
         else:
@@ -1703,3 +1721,59 @@ def create_user_wise_test_client(user):
         return wrapper
 
     return multi_user_decorator
+
+
+def create_users_for_parallel_tests(tester):
+    """
+    Function creates user using /user api
+    @param tester: test client
+    @return: uer details dict
+    """
+    login_username = 'ui_test_user' + str(random.randint(1000, 9999)) +\
+                     '@edb.com'
+    user_details = {'login_username': login_username,
+                    'login_password': 'adminedb'}
+    response = tester.post(
+        '/user_management/user/',
+        data=json.dumps(dict(username=user_details['login_username'],
+                             email=user_details['login_username'],
+                             newPassword=user_details['login_password'],
+                             confirmPassword=user_details['login_password'],
+                             active=True,
+                             role="1"
+                             )),
+        follow_redirects=True)
+    user_id = json.loads(response.data.decode('utf-8'))['id']
+    user_details['user_id'] = user_id
+    return user_details
+
+
+def module_patch(*args):
+    """
+    This is a helper function responsible to import a function inside
+    a module with the same name
+
+    e.g. user_info module has user_info function in it.
+
+    :param args:
+    :return:
+    """
+
+    target = args[0]
+    components = target.split('.')
+    from unittest import mock
+    for i in range(len(components), 0, -1):
+        try:
+            # attempt to import the module
+            imported = importlib.import_module('.'.join(components[:i]))
+
+            # module was imported, let's use it in the patch
+            patch = mock.patch(*args)
+            patch.getter = lambda: imported
+            patch.attribute = '.'.join(components[i:])
+            return patch
+        except Exception as exc:
+            pass
+
+    # did not find a module, just return the default mock
+    return mock.patch(*args)

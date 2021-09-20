@@ -6,10 +6,12 @@
 # This software is released under the PostgreSQL Licence
 #
 ##########################################################################
+import sys
 from flask_babelex import gettext
 from pgadmin.utils.constants import PREF_LABEL_DISPLAY,\
     PREF_LABEL_KEYBOARD_SHORTCUTS, PREF_LABEL_TABS_SETTINGS, \
-    PREF_LABEL_OPTIONS
+    PREF_LABEL_OPTIONS, QT_DEFAULT_PLACEHOLDER
+from flask_security import current_user
 import config
 
 LOCK_LAYOUT_LEVEL = {
@@ -468,7 +470,7 @@ def register_browser_preferences(self):
     self.qt_tab_title = self.preference.register(
         'tab_settings', 'qt_tab_title_placeholder',
         gettext("Query tool tab title"),
-        'text', '%DATABASE%/%USERNAME%@%SERVER%',
+        'text', QT_DEFAULT_PLACEHOLDER,
         category_label=PREF_LABEL_DISPLAY,
         help_str=gettext(
             'Supported placeholders are %DATABASE%, %USERNAME%, and %SERVER%. '
@@ -504,17 +506,27 @@ def register_browser_preferences(self):
         )
     )
 
+    ope_new_tab_options = [
+        {'label': gettext('Query Tool'), 'value': 'qt'},
+        {'label': gettext('Debugger'), 'value': 'debugger'},
+        {'label': gettext('Schema Diff'), 'value': 'schema_diff'},
+        {'label': gettext('ERD Tool'), 'value': 'erd_tool'}]
+
+    # Allow psq tool to open in new browser tab if ENABLE_PSQL is set to True
+    if config.ENABLE_PSQL:
+        ope_new_tab_options.append(
+            {'label': gettext('PSQL Tool'), 'value': 'psql_tool'})
+
     self.open_in_new_tab = self.preference.register(
         'tab_settings', 'new_browser_tab_open',
         gettext("Open in new browser tab"), 'select2', None,
         category_label=PREF_LABEL_OPTIONS,
-        options=[{'label': gettext('Query Tool'), 'value': 'qt'},
-                 {'label': gettext('Debugger'), 'value': 'debugger'},
-                 {'label': gettext('Schema Diff'), 'value': 'schema_diff'},
-                 {'label': gettext('ERD Tool'), 'value': 'erd_tool'}],
-        help_str=gettext('Select Query Tool, Debugger, or Schema Diff from '
-                         'the drop-down to set open in new browser tab for '
-                         'that particular module.'),
+        options=ope_new_tab_options,
+        help_str=gettext(
+            'Select Query Tool, Debugger, Schema Diff, ERD Tool '
+            'or PSQL Tool from the drop-down to set '
+            'open in new browser tab for that particular module.'
+        ),
         select2={
             'multiple': True, 'allowClear': False,
             'tags': True, 'first_empty': False,
@@ -523,3 +535,18 @@ def register_browser_preferences(self):
             'placeholder': gettext('Select open new tab...')
         }
     )
+
+    # Set PSQL tool tab title if ENABLE_PSQL is set to True
+    if config.ENABLE_PSQL:
+        self.psql_tab_title = self.preference.register(
+            'tab_settings', 'psql_tab_title_placeholder',
+            gettext("PSQL tool tab title"),
+            'text', '%DATABASE%/%USERNAME%@%SERVER%',
+            category_label=PREF_LABEL_DISPLAY,
+            help_str=gettext(
+                'Supported placeholders are %DATABASE%, %USERNAME%, '
+                'and %SERVER%. Users can provide any string with or without'
+                ' placeholders of their choice. The blank title will be revert'
+                ' back to the default title with placeholders.'
+            )
+        )

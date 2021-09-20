@@ -31,6 +31,9 @@ UNAUTH_REQ = "Unauthorized request."
 SERVER_CONNECTION_CLOSED = gettext(
     'Not connected to server or connection with the server has been closed.')
 
+# Query tool placeholder
+QT_DEFAULT_PLACEHOLDER = '%DATABASE%/%USERNAME%@%SERVER%'
+
 # Data Types
 DATATYPE_TIME_WITH_TIMEZONE = 'time with time zone'
 DATATYPE_TIME_WITHOUT_TIMEZONE = 'time without time zone'
@@ -52,7 +55,50 @@ ERROR_FETCHING_DATA = gettext('Unable to fetch data.')
 INTERNAL = 'internal'
 LDAP = 'ldap'
 KERBEROS = 'kerberos'
+OAUTH2 = "oauth2"
 
 SUPPORTED_AUTH_SOURCES = [INTERNAL,
                           LDAP,
-                          KERBEROS]
+                          KERBEROS,
+                          OAUTH2]
+
+BINARY_PATHS = {
+    "as_bin_paths": [
+        {"version": "90600", "next_major_version": "100000",
+         "serverType": gettext("EDB Advanced Server 9.6"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "100000", "next_major_version": "110000",
+         "serverType": gettext("EDB Advanced Server 10"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "110000", "next_major_version": "120000",
+         "serverType": gettext("EDB Advanced Server 11"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "120000", "next_major_version": "130000",
+         "serverType": gettext("EDB Advanced Server 12"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "130000", "next_major_version": "140000",
+         "serverType": gettext("EDB Advanced Server 13"), "binaryPath": None,
+         "isDefault": False}
+    ],
+    "pg_bin_paths": [
+        {"version": "90600", "next_major_version": "100000",
+         "serverType": gettext("PostgreSQL 9.6"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "100000", "next_major_version": "110000",
+         "serverType": gettext("PostgreSQL 10"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "110000", "next_major_version": "120000",
+         "serverType": gettext("PostgreSQL 11"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "120000", "next_major_version": "130000",
+         "serverType": gettext("PostgreSQL 12"), "binaryPath": None,
+         "isDefault": False},
+        {"version": "130000", "next_major_version": "140000",
+         "serverType": gettext("PostgreSQL 13"), "binaryPath": None,
+         "isDefault": False}
+    ]
+}
+
+UTILITIES_ARRAY = ['pg_dump', 'pg_dumpall', 'pg_restore', 'psql']
+
+ENTER_EMAIL_ADDRESS = "Email address: "

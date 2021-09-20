@@ -13,6 +13,7 @@ import {getDatabaseLabel, generateTitle} from './datagrid_panel_title';
 import CodeMirror from 'bundled_codemirror';
 import * as SqlEditorUtils from 'sources/sqleditor_utils';
 import $ from 'jquery';
+import _ from 'underscore';
 
 export function showDataGrid(
   datagrid,
@@ -43,9 +44,8 @@ export function showDataGrid(
     return;
   }
 
-  let applicable_nodes = ['table', 'view', 'mview', 'foreign_table'];
+  let applicable_nodes = ['table', 'partition', 'view', 'mview', 'foreign_table', 'catalog_object'];
   if (applicable_nodes.indexOf(node.getData()._type) === -1) {
-    alertify.error(gettext('This feature is not applicable to the selected object.'));
     return;
   }
 
@@ -245,7 +245,7 @@ function initFilterDialog(alertify, pgBrowser) {
                   alertify.alert()
                     .setting({
                       'title': gettext('Validation Error'),
-                      'label':gettext('Ok'),
+                      'label':gettext('OK'),
                       'message': gettext(res.data.result),
                       'onok': function(){
                         filter_editor.focus();
@@ -290,7 +290,7 @@ function hasSchemaOrCatalogOrViewInformation(parentData) {
     parentData.catalog !== undefined;
 }
 
-export function generateDatagridTitle(pgBrowser, aciTreeIdentifier, custom_title=null) {
+export function generateDatagridTitle(pgBrowser, aciTreeIdentifier, custom_title=null, backend_entity=null) {
   //const baseTitle = getPanelTitle(pgBrowser, aciTreeIdentifier);
   var preferences = pgBrowser.get_preferences_for_module('browser');
   const parentData = getTreeNodeHierarchyFromIdentifier.call(
@@ -299,7 +299,7 @@ export function generateDatagridTitle(pgBrowser, aciTreeIdentifier, custom_title
   );
 
   const namespaceName = retrieveNameSpaceName(parentData);
-  const db_label = getDatabaseLabel(parentData);
+  const db_label = !_.isUndefined(backend_entity) && backend_entity != null && backend_entity.hasOwnProperty('db_name') ? backend_entity['db_name'] : getDatabaseLabel(parentData);
   const node = pgBrowser.treeMenu.findNodeByDomElement(aciTreeIdentifier);
 
   var dtg_title_placeholder = '';
